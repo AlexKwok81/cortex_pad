@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import os
 import sys
 import asyncio
@@ -140,7 +140,7 @@ def _default_layout():
         {"id": "stat_vram", "type": "stat_vram", "name": "VRAM", "grid_x": 4, "grid_y": 0, "grid_w": 1, "grid_h": 1},
         {"id": "stat_uptime", "type": "stat_uptime", "name": "Uptime", "grid_x": 5, "grid_y": 0, "grid_w": 1, "grid_h": 1},
         {"id": "btn_001", "type": "button", "name": "Mute", "icon": "volume-off", "mode": "toggle", "grid_x": 6, "grid_y": 0, "grid_w": 1, "grid_h": 1, "actions_on": [{"type": "system", "value": "mute"}], "actions_off": [{"type": "system", "value": "mute"}], "state_binding": "is_muted"},
-        {"id": "btn_002", "type": "button", "name": "WeChat", "icon": "wechat", "mode": "normal", "grid_x": 7, "grid_y": 0, "grid_w": 1, "grid_h": 1, "actions": [{"type": "open", "value": "D:\\Program Files\\Weixin\\Weixin.exe"}]},
+        {"id": "btn_002", "type": "button", "name": "WeChat", "icon": "wechat", "mode": "normal", "grid_x": 7, "grid_y": 0, "grid_w": 1, "grid_h": 1, "actions": [{"type": "open", "value": "https://web.wechat.com"}]},
         {"id": "btn_vol_up", "type": "button", "name": "Vol+", "icon": "volume-up", "mode": "normal", "grid_x": 0, "grid_y": 1, "grid_w": 1, "grid_h": 1, "actions": [{"type": "system", "value": "volume_up"}]},
         {"id": "btn_vol_down", "type": "button", "name": "Vol-", "icon": "volume-down", "mode": "normal", "grid_x": 1, "grid_y": 1, "grid_w": 1, "grid_h": 1, "actions": [{"type": "system", "value": "volume_down"}]},
         {"id": "btn_bright_up", "type": "button", "name": "Bright+", "icon": "brightness-up", "mode": "normal", "grid_x": 2, "grid_y": 1, "grid_w": 1, "grid_h": 1, "actions": [{"type": "system", "value": "brightness_up"}]},

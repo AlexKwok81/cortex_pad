@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *.class
@@ -47,12 +47,9 @@ models/
 # Certs (auto-generated)
 certs/
 
-# Personal configs (contain user-specific settings)
+# User-specific configs (contains personal button layouts)
 config.json
-configs/*
-!configs/.gitkeep
+configs/config.json
 
 # Keep essential files
-!requirements.txt
-!README.md
-!configs/
+!configs/.gitkeep

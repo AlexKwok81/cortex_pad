@@ -15,11 +15,10 @@ def get_base_path() -> Path:
     return Path(__file__).parent
 
 def get_config_path() -> Path:
-    """获取配置文件路径（打包后配置放在 exe 同级目录）"""
+    """获取配置文件路径（打包后配置放在 exe 同级 configs 目录）"""
     if getattr(sys, 'frozen', False):
-        # 打包后配置文件放在 exe 同级目录
-        return Path(sys.executable).parent / "config.json"
-    return Path(__file__).parent / "config.json"
+        return Path(sys.executable).parent / "configs" / "config.json"
+    return Path(__file__).parent / "configs" / "config.json"
 
 def get_static_path() -> Path:
     """获取静态文件路径"""

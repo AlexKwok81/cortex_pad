@@ -1,4 +1,4 @@
-﻿# -*- mode: python ; coding: utf-8 -*-
+# -*- mode: python ; coding: utf-8 -*-
 """CortexPad PyInstaller config"""
 
 import os
@@ -42,7 +42,7 @@ hiddenimports = [
 
 datas = [
     ('static/index.html', 'static'),
-    ('config.json', '.'),
+    ('configs/config.json', 'configs'),
     ('icon.png', '.'),
 ]
 

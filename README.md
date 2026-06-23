@@ -31,7 +31,7 @@
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/yourname/CortexPad.git
+git clone https://github.com/AlexKwok81/cortex_pad.git
 cd CortexPad
 
 # 2. 安装依赖
@@ -72,7 +72,7 @@ python -m PyInstaller CortexPad.spec --noconfirm --clean
 
 ## ⚙️ 配置说明
 
-编辑 `config.json` 自定义按钮布局，或直接在手机端编辑：
+编辑 `configs/config.json` 自定义按钮布局，或直接在手机端编辑：
 
 ### 动作类型
 
@@ -139,12 +139,12 @@ CortexPad/
 ├── server.py            # FastAPI + WebSocket 服务
 ├── action_executor.py   # 动作执行（快捷键/延时/脚本/媒体/窗口）
 ├── state_monitor.py     # 系统状态监控（CPU/内存/磁盘/剪贴板）
-├── config_manager.py    # 配置管理（读写 config.json）
+├── config_manager.py    # 配置管理（读写 configs/config.json）
 ├── voice_recognizer.py  # 语音识别模块（Whisper）
 ├── static/
 │   └── index.html       # 前端 UI（纯 HTML + CSS + JS）
-├── config.json          # 按钮配置文件（不提交到 git）
-├── configs/             # 配置文件目录
+├── configs/
+│   └── config.json      # 按钮配置文件（可自定义）
 ├── CortexPad.spec       # PyInstaller 打包配置
 ├── build.bat            # 一键打包脚本
 ├── start.bat            # 一键启动脚本
