@@ -1,0 +1,105 @@
+﻿# -*- mode: python ; coding: utf-8 -*-
+"""CortexPad PyInstaller config"""
+
+import os
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+
+block_cipher = None
+
+hiddenimports = [
+    'uvicorn',
+    'uvicorn.logging',
+    'uvicorn.loops',
+    'uvicorn.loops.auto',
+    'uvicorn.protocols',
+    'uvicorn.protocols.http',
+    'uvicorn.protocols.http.auto',
+    'uvicorn.protocols.websockets',
+    'uvicorn.protocols.websockets.auto',
+    'fastapi',
+    'starlette',
+    'starlette.websockets',
+    'websockets',
+    'websockets.legacy',
+    'websockets.legacy.client',
+    'websockets.legacy.server',
+    'pyautogui',
+    'pyperclip',
+    'pygetwindow',
+    'pystray',
+    'pystray._win32',
+    'PIL',
+    'PIL.Image',
+    'PIL._tkinter_finder',
+    'psutil',
+    'qrcode',
+    'qrcode.image',
+    'qrcode.image.svg',
+    'pycaw',
+    'comtypes',
+    'screen_brightness_control',
+]
+
+datas = [
+    ('static/index.html', 'static'),
+    ('config.json', '.'),
+    ('icon.png', '.'),
+]
+
+excludes = [
+    'matplotlib',
+    'numpy',
+    'scipy',
+    'pandas',
+    'pytest',
+    'tkinter',
+    'IPython',
+    'jupyter',
+    'notebook',
+    'wx',
+    'PyQt5',
+    'PyQt6',
+    'PySide2',
+    'PySide6',
+    'vtkmodules',
+    'vtk',
+]
+
+a = Analysis(
+    ['main.py'],
+    pathex=[],
+    binaries=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=excludes,
+    noarchive=False,
+)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    [],
+    name='CortexPad',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    uac_admin=False,
+    icon=None,
+)

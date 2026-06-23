@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+._*
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec.bak
+*.manifest
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+*.temp
+
+# Experimental / tool-specific
+.cocoindex_code/
+notif_reader/
+models/
+.trae/
+
+# Certs (auto-generated)
+certs/
+
+# Personal configs (contain user-specific settings)
+config.json
+configs/*
+!configs/.gitkeep
+
+# Keep essential files
+!requirements.txt
+!README.md
+!configs/

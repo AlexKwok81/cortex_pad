@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>CortexPad</title>
+    <style>
+        :root{--bg:#000;--card:rgba(255,255,255,.1);--card2:#1c1c1e;--text:#fff;--text2:rgba(255,255,255,.5);--accent:#0a84ff;--green:#30d158;--red:#ff453a;--orange:#ff9f0a;--fill:#fff;--r:14px;--cell:100px;--gap:8px;--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px)}
+        *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+        body{font-family:-apple-system,"SF Pro Display","Helvetica Neue",sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;padding:calc(14px + var(--st)) 12px calc(70px + var(--sb)) 12px;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+
+        /* Status dot */
+        .sp{position:fixed;top:calc(14px + var(--st));right:16px;width:8px;height:8px;border-radius:50%;z-index:100;box-shadow:0 0 6px rgba(0,0,0,.4)}
+        .sp.on{background:var(--green);box-shadow:0 0 8px rgba(48,209,88,.5)}
+        .sp.off{background:var(--red);box-shadow:0 0 8px rgba(255,69,58,.5)}
+        .sp.wait{background:var(--orange);box-shadow:0 0 8px rgba(255,159,10,.5)}
+
+        /* ===== GRID ===== */
+        .grid-wrap{position:relative;width:100%}
+        .gc{position:absolute;border-radius:var(--r);background:transparent;border:1px dashed transparent}.edit-mode .gc{background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.06)}
+
+        /* Grid item base */
+        .gi{position:absolute;border-radius:var(--r);background:var(--card);overflow:hidden;-webkit-user-select:none;user-select:none}
+        .gi:active{transform:scale(.97)}
+        .gi .db{display:none;position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;background:var(--red);color:#fff;font-size:11px;font-weight:700;align-items:center;justify-content:center;cursor:pointer;z-index:10;border:2px solid rgba(0,0,0,.3)}
+
+        /* Edit mode */
+        .edit-mode .gi{border:2px solid rgba(255,255,255,.15);cursor:grab}
+        .edit-mode .gi:active{cursor:grabbing;transform:scale(1.03);z-index:20;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+        .edit-mode .gi .db{display:flex}
+        .edit-mode .gc{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04)}
+
+        /* ===== STAT ITEM ===== */
+        .stat-item{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px;text-align:center}
+        .stat-item .sv{font-size:14px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+        .stat-item .sl{font-size:9px;color:var(--text2);margin-top:3px;font-weight:500;text-transform:uppercase;letter-spacing:.3px}
+        .stat-item .bar{width:100%;height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:6px;overflow:hidden}
+        .stat-item .bf{height:100%;border-radius:2px;transition:width .6s ease}
+
+        /* ===== BUTTON ITEM ===== */
+        .btn-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer}
+        .btn-item:active{background:rgba(255,255,255,.15)}
+        .btn-item.active{background:var(--accent);box-shadow:0 4px 16px rgba(10,132,255,.3)}
+        .btn-item .ai{font-size:22px;line-height:1}
+        .btn-item .al{font-size:10px;opacity:.55;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90%}
+
+        /* ===== ADD BUTTON ===== */
+        .add-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:2px dashed rgba(255,255,255,.1);cursor:pointer;color:rgba(255,255,255,.2);font-size:11px}
+
+        /* Bottom bar */
+        .bb{position:fixed;bottom:0;left:0;right:0;padding:8px 16px calc(8px + var(--sb));display:flex;justify-content:center;gap:20px;background:rgba(0,0,0,.85);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:.5px solid rgba(255,255,255,.06)}
+        .bbtn{display:flex;flex-direction:column;align-items:center;gap:1px;background:none;border:none;color:var(--text2);font-size:10px;font-weight:500;cursor:pointer;padding:4px 10px}
+        .bbtn.active{color:var(--accent)}
+        .bbtn svg{width:20px;height:20px}
+
+        /* Modal */
+        .mbg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:200;align-items:flex-end;justify-content:center}
+        .mbg.show{display:flex}
+        .ms{background:var(--card2);border-radius:14px 14px 0 0;width:100%;max-width:500px;max-height:90dvh;overflow-y:auto;padding:10px 0 calc(14px + var(--sb)) 0;animation:su .28s cubic-bezier(.2,0,0,1)}
+        @keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        .mh{width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,.25);margin:0 auto 8px}
+        .ms h3{text-align:center;font-size:16px;font-weight:600;padding:4px 16px 12px;border-bottom:.5px solid rgba(255,255,255,.06)}
+        .fd{padding:10px 16px}.fd+.fd{border-top:.5px solid rgba(255,255,255,.06)}
+        .fd label{display:block;font-size:12px;color:var(--text2);margin-bottom:4px;font-weight:500}
+        .fd input,.fd select,.fd textarea{width:100%;padding:9px 11px;border-radius:10px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);color:var(--text);font-size:15px;font-family:inherit}
+        .fd textarea{min-height:72px;resize:vertical;font-family:"SF Mono",monospace;font-size:13px}
+        .ma{display:flex;gap:8px;padding:12px 16px}.ma button{flex:1;padding:12px;border:none;border-radius:11px;font-size:16px;font-weight:600;cursor:pointer}
+        .bp{background:var(--accent);color:#fff}.bs{background:rgba(255,255,255,.08);color:var(--text)}.bd{background:var(--red);color:#fff;flex:.35}
+
+        .type-picker{display:flex;gap:6px;padding:8px 16px;flex-wrap:wrap}
+        .tp{padding:7px 12px;border-radius:10px;background:rgba(255,255,255,.07);border:2px solid transparent;color:var(--text);font-size:12px;cursor:pointer;font-weight:500;transition:all .15s}
+        .tp.sel{border-color:var(--accent);background:rgba(10,132,255,.15)}
+        .size-picker{display:flex;gap:6px;padding:8px 16px;flex-wrap:wrap}
+        .sp2{padding:7px 12px;border-radius:10px;background:rgba(255,255,255,.07);border:2px solid transparent;color:var(--text);font-size:12px;cursor:pointer;font-weight:500}
+        .sp2.sel{border-color:var(--accent);background:rgba(10,132,255,.15)}
+        .ps .fd input{text-align:center;font-size:26px;letter-spacing:8px;font-weight:700;padding:12px}
+        .ps p{color:var(--text2);font-size:14px;padding:0 16px 10px;text-align:center}
+        .hidden{display:none!important}
+        .emoji-picker{display:flex;flex-wrap:wrap;gap:4px;padding:6px 0;max-height:120px;overflow-y:auto}
+        .emoji-picker span{font-size:20px;cursor:pointer;padding:4px;border-radius:6px;transition:background .15s;line-height:1}
+        .emoji-picker span:hover{background:rgba(255,255,255,.15)}
+        
+        /* Custom Icon Upload */
+        .icon-upload-wrap{display:flex;gap:8px;align-items:center;margin-top:8px}
+        .icon-upload-wrap button{flex-shrink:0;padding:8px 12px;border:none;border-radius:8px;background:rgba(255,255,255,.12);color:#fff;font-size:12px;cursor:pointer;white-space:nowrap}
+        .icon-upload-wrap button:hover{background:rgba(255,255,255,.2)}
+        .icon-preview{width:44px;height:44px;border-radius:10px;border:2px solid rgba(255,255,255,.15);background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;overflow:hidden}
+        .icon-preview img{width:100%;height:100%;object-fit:contain}
+        .icon-preview span{font-size:20px}
+        .custom-icon-img{width:24px;height:24px;object-fit:contain;display:inline-block}
+        .btn-item .ai img{width:24px;height:24px;object-fit:contain;display:block}
+        .toast-wrap{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10000;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
+        .toast{padding:10px 20px;border-radius:10px;color:#fff;font-size:14px;font-weight:500;backdrop-filter:blur(12px);opacity:1;transition:opacity .3s;pointer-events:auto;animation:toastIn .3s ease}
+        .toast.green{background:rgba(48,209,88,.9)}
+        .toast.red{background:rgba(255,69,58,.9)}
+        .toast.yellow{background:rgba(255,159,10,.9);color:#000}
+        .toast.fade-out{opacity:0}
+        @keyframes toastIn{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
+        .admin-bar{position:fixed;top:0;left:0;right:0;z-index:10001;padding:10px 16px;background:rgba(255,159,10,.95);color:#000;font-size:13px;font-weight:500;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+        .admin-bar span{font-size:16px}
+
+        /* ===== VOICE RECORDING ===== */
+        .voice-btn{position:relative;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;flex-shrink:0}
+        .voice-btn:active{transform:scale(.95)}
+        .voice-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer}
+        .voice-item:active{background:rgba(255,69,58,.2)}
+        .voice-item.recording{background:rgba(255,69,58,.3);box-shadow:0 0 16px rgba(255,69,58,.4)}
+        .voice-item.processing{background:rgba(255,159,10,.3)}
+        .voice-item .ai{font-size:22px;line-height:1}
+        .voice-item .al{font-size:10px;opacity:.55;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90%}
+        .voice-btn.recording{background:var(--red);border-color:var(--red);box-shadow:0 0 20px rgba(255,69,58,.6);animation:voicePulse 1.2s ease-in-out infinite}
+        .voice-btn.processing{background:var(--orange);border-color:var(--orange);animation:voiceSpin 1s linear infinite}
+        .voice-btn .voice-icon{font-size:22px;line-height:1;transition:transform .15s}
+        .voice-btn.recording .voice-icon{transform:scale(1.15)}
+        @keyframes voicePulse{0%,100%{box-shadow:0 0 12px rgba(255,69,58,.4)}50%{box-shadow:0 0 28px rgba(255,69,58,.7)}}
+        @keyframes voiceSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        .voice-recording-overlay{display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);flex-direction:column;align-items:center;justify-content:center;gap:20px}
+        .voice-recording-overlay.active{display:flex}
+        .voice-recording-overlay .vr-ring{width:120px;height:120px;border-radius:50%;border:4px solid var(--red);display:flex;align-items:center;justify-content:center;animation:vrPulse 1.5s ease-in-out infinite}
+        .voice-recording-overlay .vr-icon{font-size:48px}
+        .voice-recording-overlay .vr-text{font-size:18px;font-weight:600;color:#fff}
+        .voice-recording-overlay .vr-hint{font-size:13px;color:rgba(255,255,255,.5)}
+        .voice-recording-overlay.processing .vr-ring{border-color:var(--orange);animation:vrSpin 1s linear infinite}
+        .voice-recording-overlay.processing .vr-text{color:var(--orange)}
+        @keyframes vrPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.08);opacity:.8}}
+        @keyframes vrSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+    </style>
+</head>
+<body>
+    <div class="toast-wrap" id="toast-wrap"></div>
+    <div id="desktop-landing" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:24px;font-family:-apple-system,sans-serif;color:#fff">
+        <div style="font-size:32px;font-weight:700">📱 CortexPad</div>
+        <div id="qr-box" style="background:#fff;padding:16px;border-radius:16px"></div>
+        <div id="info-url" style="font-size:18px;color:rgba(255,255,255,.7)"></div>
+        <div id="info-code" style="font-size:36px;font-weight:700;letter-spacing:6px;color:#0a84ff"></div>
+        <div style="font-size:14px;color:rgba(255,255,255,.4)">手机扫描二维码或输入配对码</div>
+        <button id="close-landing" style="margin-top:8px;padding:12px 18px;border:none;border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:15px;font-weight:600;cursor:pointer">关闭并进入控制面板</button>
+    </div>
+
+    <div class="sp wait" id="sp"></div>
+
+    <!-- Voice Recording Overlay -->
+    <div class="voice-recording-overlay" id="voice-overlay">
+        <div class="vr-ring"><span class="vr-icon">🎤</span></div>
+        <div class="vr-text" id="voice-status-text">录音中...</div>
+        <div class="vr-hint">松开发送识别</div>
+    </div>
+
+    <!-- Unified grid -->
+    <div class="grid-wrap" id="grid-wrap"></div>
+
+    <div class="bb">
+        <button class="bbtn" id="tab-edit" onclick="toggleEdit()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Edit
+        </button>
+        <button class="bbtn" onclick="showQR()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><rect x="18" y="18" width="3" height="3"/></svg>
+            QR
+        </button>
+
+        <button class="bbtn" id="tab-export" onclick="exportConfig()" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            导出
+        </button>
+        <button class="bbtn" id="tab-import" onclick="importConfig()" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            导入
+        </button>
+    </div>
+
+    <!-- Add/Edit modal -->
+    <div class="mbg" id="edit-modal">
+        <div class="ms"><div class="mh"></div><h3 id="mt">Add Item</h3>
+            <div class="fd"><label>Type</label>
+                <div class="type-picker" id="type-picker">
+                    <div class="tp sel" data-type="button">Button</div>
+                    <div class="tp" data-type="stat_cpu">CPU</div>
+                    <div class="tp" data-type="stat_mem">Memory</div>
+                    <div class="tp" data-type="stat_disk">Disk</div>
+                    <div class="tp" data-type="stat_uptime">Uptime</div>
+                    <div class="tp" data-type="stat_gpu">GPU</div>
+                    <div class="tp" data-type="stat_vram">VRAM</div>
+                    <div class="tp" data-type="voice">🎤 Voice</div>
+                    <div class="tp" data-type="voice_workflow">🎤 Workflow</div>
+                </div>
+            </div>
+            <div class="fd item-fields"><label>Name</label><input id="f-name"></div>
+            <div class="fd item-fields"><label>Icon</label>
+                <input id="f-icon" placeholder="点击选择或手动输入 emoji" style="cursor:pointer" onclick="document.getElementById('emoji-picker').style.display=document.getElementById('emoji-picker').style.display==='none'?'flex':'none'" onfocus="document.getElementById('emoji-picker').style.display='flex'">
+                <div class="emoji-picker" id="emoji-picker" style="display:none"></div>
+                <div class="icon-upload-wrap">
+                    <div class="icon-preview" id="icon-preview"><span>⭐</span></div>
+                    <button onclick="document.getElementById('icon-upload-input').click()">📷 上传图片</button>
+                    <input type="file" id="icon-upload-input" accept="image/*" style="display:none" onchange="handleIconUpload(event)">
+                </div>
+            </div>
+            <div class="fd workflow-fields" style="display:none"><label>Workflow ID</label><input id="f-workflow-id" placeholder="wf_001"></div>
+            <div class="fd"><label>Size</label>
+                <div class="size-picker" id="size-picker">
+                    <div class="sp2 sel" data-w="1" data-h="1">1&times;1</div>
+                    <div class="sp2" data-w="1" data-h="2">1&times;2</div>
+                    <div class="sp2" data-w="2" data-h="1">2&times;1</div>
+                    <div class="sp2" data-w="2" data-h="2">2&times;2</div>
+                    <div class="sp2" data-w="3" data-h="1">3&times;1</div>
+                    <div class="sp2" data-w="4" data-h="1">4&times;1</div>
+                </div>
+            </div>
+            <div class="fd btn-fields"><label>Mode</label><select id="f-mode"><option value="normal">Tap</option><option value="toggle">Toggle</option><option value="long_press">Long Press</option></select></div>
+            <div class="fd action-fields"><label>Actions (JSON)</label>
+                <div style="display:flex;gap:6px;align-items:flex-start">
+                    <textarea id="f-actions" style="flex:1"></textarea>
+                    <button id="hotkey-record-btn" style="flex-shrink:0;padding:8px 10px;border:none;border-radius:8px;background:rgba(255,255,255,.12);color:#fff;font-size:12px;cursor:pointer;white-space:nowrap" onclick="startHotkeyRecord()">⏹ 录制</button>
+                </div>
+            </div>
+            <div class="fd btn-fields"><label>State Binding</label><input id="f-sb" placeholder="is_muted"></div>
+            <div class="fd btn-fields" id="long-press-fields" style="display:none"><label>Long Press Actions (JSON)</label><textarea id="f-actions-long" placeholder='[{"type":"hotkey","value":"ctrl+w"}]'></textarea></div>
+            <div class="ma"><button class="bs" onclick="cm()">Cancel</button><button class="bd hidden" id="f-del" onclick="dd()">Del</button><button class="bp" onclick="ds()">Save</button></div>
+        </div>
+    </div>
+
+    <!-- Pair modal -->
+    <div class="mbg" id="pair-modal">
+        <div class="ms ps"><div class="mh"></div><h3>&#x1f510; Pair Device</h3>
+            <p>Enter the 4-digit code on your PC</p>
+            <div class="fd"><input id="pair-code" maxlength="4" placeholder="----" inputmode="numeric"></div>
+            <div class="ma"><button class="bp" onclick="sp()" style="flex:1">Connect</button></div>
+        </div>
+    </div>
+
+    <script>
+        // Desktop detection - show QR landing page
+        (function(){
+            const params=new URLSearchParams(location.search);
+            const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||window.innerWidth<768;
+            const forceLanding=params.get("qr")==="1"||params.get("landing")==="1";
+            const dismissed=localStorage.getItem("rp_dismiss_landing")==="1";
+            if(!isMobile||forceLanding){
+                if(!dismissed||forceLanding){
+                    document.getElementById("desktop-landing").style.display="flex";
+                    document.body.style.overflow="hidden";
+                    fetch("/api/info").then(r=>r.json()).then(info=>{
+                        document.getElementById("info-url").textContent=info.url;
+                        document.getElementById("info-code").textContent="Pair Code: "+info.pair_code;
+                        const qrHtml = info.qr_data_uri ? `<img src="${info.qr_data_uri}" alt="QR" style="display:block;width:220px;height:220px;border-radius:12px">` : info.qr_svg;
+                        document.getElementById("qr-box").innerHTML=qrHtml;
+                    });
+                    window._isDesktop=true;
+                }
+            }
+            document.getElementById("close-landing").addEventListener("click",()=>{
+                localStorage.setItem("rp_dismiss_landing","1");
+                document.getElementById("desktop-landing").style.display="none";
+                document.body.style.overflow="";
+                window._isDesktop=false;
+                connect();
+            });
+        })();
+
+        let ws;
+        let cfg = {layout: []};
+        let state = {};
+        let editMode = false;
+        let retry = 0;
+
+const I={
+"volume-off":"\u{1f507}","volume-up":"\u{1f50a}","volume-down":"\u{1f509}",
+"brightness-up":"\u{1f506}","brightness-down":"\u{1f505}",
+"lock":"\u{1f512}","unlock":"\u{1f513}",
+"camera":"\u{1f4f7}","photo":"\u{1f4f8}",
+"power":"\u{23fb}","shutdown":"\u{23fb}",
+"mute":"\u{1f507}","unmute":"\u{1f50a}",
+"play":"\u{25b6}","pause":"\u{23f8}","stop":"\u{23f9}","skip":"\u{23ed}",
+"next":"\u{23ed}","prev":"\u{23ee}",
+"home":"\u{1f3e0}","settings":"\u{2699}","gear":"\u{2699}",
+"star":"\u{2b50}","heart":"\u{2764}","fire":"\u{1f525}",
+"thumbs-up":"\u{1f44d}","thumbs-down":"\u{1f44e}",
+"check":"\u{2705}","close":"\u{274c}","add":"\u{2795}",
+"search":"\u{1f50d}","mail":"\u{2709}","message":"\u{1f4ac}",
+"wechat":"\u{1f4ac}","qq":"\u{1f4ac}",
+"chrome":"\u{1f310}","browser":"\u{1f310}",
+"folder":"\u{1f4c1}","file":"\u{1f4c4}",
+"copy":"\u{1f4cb}","paste":"\u{1f4cb}","cut":"\u{2702}",
+"undo":"\u{1f504}","redo":"\u{1f504}",
+"volume-mute":"\u{1f507}","brightness":"\u{2600}",
+"cpu":"\u{1f4bb}","gpu":"\u{1f3ae}",
+"clock":"\u{1f550}","timer":"\u{23f1}",
+"phone":"\u{1f4f1}","computer":"\u{1f4bb}",
+"terminal":"\u{1f4bb}","code":"\u{1f4dd}",
+"music":"\u{1f3b5}","video":"\u{1f3ac}",
+"image":"\u{1f5bc}","link":"\u{1f517}",
+"wifi":"\u{1f4f6}","bluetooth":"\u{1f517}",
+"fullscreen":"\u{26f6}","minimize":"\u{2796}",
+"maximize":"\u{2795}","exit":"\u{274c}",
+"refresh":"\u{1f504}","reload":"\u{1f504}",
+"download":"\u{1f4e5}","upload":"\u{1f4e4}",
+"save":"\u{1f4be}","delete":"\u{1f5d1}",
+"edit":"\u{270f}","pen":"\u{270f}",
+"calendar":"\u{1f4c5}","alarm":"\u{23f0}",
+"map":"\u{1f5fa}","location":"\u{1f4cd}",
+"share":"\u{1f4e1}","send":"\u{2709}",
+"key":"\u{1f511}","shield":"\u{1f6e1}",
+"rocket":"\u{1f680}","flash":"\u{26a1}",
+"sun":"\u{2600}","moon":"\u{1f319}",
+"cloud":"\u{2601}","rain":"\u{1f327}",
+"wifi-on":"\u{1f4f6}","wifi-off":"\u{1f4f6}",
+"power-on":"\u{23fb}","power-off":"\u{23fb}",
+"sleep":"\u{1f34c}","hibernate":"\u{1f34c}",
+"restart":"\u{1f504}",
+"clipboard":"\u{1f4cb}","notepad":"\u{1f4dd}",
+"calculator":"\u{1f5a9}","weather":"\u{26c5}",
+"mic":"\u{1f3a4}","mic-off":"\u{1f507}",
+"camera-off":"\u{1f4f7}",
+"screen":"\u{1f4fa}","monitor":"\u{1f4fa}",
+"window":"\u{1f5d5}","tabs":"\u{1f4d2}",
+"bookmark":"\u{1f516}","tag":"\u{1f3f7}",
+"clock-off":"\u{23f0}",
+"mouse":"\u{1f5b1}","keyboard":"\u{2328}",
+"print":"\u{1f5a8}","scanner":"\u{1f50d}",
+"disk":"\u{1f4be}","hard-drive":"\u{1f4bd}",
+"usb":"\u{1f50c}","battery":"\u{1f50b}",
+"signal":"\u{1f4e1}","antenna":"\u{1f4e1}",
+"robot":"\u{1f916}","bot":"\u{1f916}",
+"magic":"\u{2728}","wand":"\u{1fa84}",
+"gift":"\u{1f381}","party":"\u{1f389}",
+"flag":"\u{1f6a9}","target":"\u{1f3af}",
+"crosshair":"\u{1f3af}","aim":"\u{1f3af}",
+"coffee":"\u{2615}","food":"\u{1f35d}",
+"game":"\u{1f3ae}","joystick":"\u{1f3ae}",
+"trophy":"\u{1f3c6}","medal":"\u{1f3c5}",
+"crown":"\u{1f451}","gem":"\u{1f48e}",
+"money":"\u{1f4b0}","dollar":"\u{1f4b5}",
+"euro":"\u{1f4b6}","yen":"\u{1f4b4}",
+"bitcoin":"\u{1f4b8}",
+"clock1":"\u{1f550}","clock2":"\u{1f551}",
+"clock3":"\u{1f552}","clock4":"\u{1f553}",
+"clock5":"\u{1f554}","clock6":"\u{1f555}",
+"clock7":"\u{1f556}","clock8":"\u{1f557}",
+"clock9":"\u{1f558}","clock10":"\u{1f559}",
+"clock11":"\u{1f55a}","clock12":"\u{1f55b}"
+}
+        function gi(s){
+            if(s && s.startsWith('data:image')){
+                return `<img src="${s}" alt="icon" class="custom-icon-img">`;
+            }
+            return I[s]||s||'\u2753'
+        }
+        const COLS=8,GAP=6;
+
+        /* ===== DEFAULT LAYOUT ===== */
+        function defaultLayout(){
+            return [
+                {id:'stat_cpu',type:'stat_cpu',name:'CPU',grid_x:0,grid_y:0,grid_w:1,grid_h:1},
+                {id:'stat_mem',type:'stat_mem',name:'Memory',grid_x:1,grid_y:0,grid_w:1,grid_h:1},
+                {id:'stat_disk',type:'stat_disk',name:'Disk',grid_x:2,grid_y:0,grid_w:1,grid_h:1},
+                {id:'stat_gpu',type:'stat_gpu',name:'GPU',grid_x:3,grid_y:0,grid_w:1,grid_h:1},
+                {id:'stat_vram',type:'stat_vram',name:'VRAM',grid_x:4,grid_y:0,grid_w:1,grid_h:1},
+                {id:'stat_uptime',type:'stat_uptime',name:'Uptime',grid_x:5,grid_y:0,grid_w:1,grid_h:1},
+                {id:'btn_001',type:'button',name:'Mute',icon:'volume-off',mode:'toggle',grid_x:6,grid_y:0,grid_w:1,grid_h:1,actions_on:[{type:'system',value:'mute'}],actions_off:[{type:'system',value:'mute'}],state_binding:'is_muted'},
+                {id:'btn_002',type:'button',name:'WeChat',icon:'wechat',mode:'normal',grid_x:7,grid_y:0,grid_w:1,grid_h:1,actions:[{type:'open',value:'D:\\Program Files\\Weixin\\Weixin.exe'}]},
+                {id:'btn_vol_up',type:'button',name:'Vol+',icon:'volume-up',mode:'normal',grid_x:0,grid_y:1,grid_w:1,grid_h:1,actions:[{type:'system',value:'volume_up'}]},
+                {id:'btn_vol_down',type:'button',name:'Vol-',icon:'volume-down',mode:'normal',grid_x:1,grid_y:1,grid_w:1,grid_h:1,actions:[{type:'system',value:'volume_down'}]},
+                {id:'btn_bright_up',type:'button',name:'Bright+',icon:'brightness-up',mode:'normal',grid_x:2,grid_y:1,grid_w:1,grid_h:1,actions:[{type:'system',value:'brightness_up'}]},
+                {id:'btn_bright_down',type:'button',name:'Bright-',icon:'brightness-down',mode:'normal',grid_x:3,grid_y:1,grid_w:1,grid_h:1,actions:[{type:'system',value:'brightness_down'}]},
+                {id:'btn_media_play',type:'button',name:'Play/Pause',icon:'play',mode:'normal',grid_x:5,grid_y:1,grid_w:1,grid_h:1,actions:[{type:'media',value:'play_pause'}]},
+                {id:'btn_media_prev',type:'button',name:'Prev',icon:'previous',mode:'normal',grid_x:6,grid_y:1,grid_w:1,grid_h:1,actions:[{type:'media',value:'previous'}]},
+                {id:'btn_media_next',type:'button',name:'Next',icon:'next',mode:'normal',grid_x:7,grid_y:1,grid_w:1,grid_h:1,actions:[{type:'media',value:'next'}]},
+                {id:'btn_win_max',type:'button',name:'Max',icon:'maximize',mode:'normal',grid_x:0,grid_y:2,grid_w:1,grid_h:1,actions:[{type:'window',value:'maximize'}]},
+                {id:'btn_win_min',type:'button',name:'Min',icon:'minimize',mode:'normal',grid_x:1,grid_y:2,grid_w:1,grid_h:1,actions:[{type:'window',value:'minimize'}]},
+                {id:'btn_win_left',type:'button',name:'Left',icon:'window',mode:'normal',grid_x:2,grid_y:2,grid_w:1,grid_h:1,actions:[{type:'window',value:'tile_left'}]},
+                {id:'btn_win_right',type:'button',name:'Right',icon:'window',mode:'normal',grid_x:3,grid_y:2,grid_w:1,grid_h:1,actions:[{type:'window',value:'tile_right'}]},
+            ];
+        }
+
+        /* ===== WS ===== */
+        let wsErrorShown = false;
+        function connect(){
+            const p=location.protocol==='https:'?'wss:':'ws:';
+            ws=new WebSocket(`${p}//${location.host}/ws`);
+            ss('wait');
+            ws.onopen=()=>{wsErrorShown=false;if(retry>0)toast('已重新连接','green');retry=0;};
+            ws.onmessage=e=>handle(JSON.parse(e.data));
+            ws.onerror=(e)=>{
+                if(!wsErrorShown){
+                    wsErrorShown=true;
+                    if(location.protocol==='https:'){
+                        toast('⚠️ 请先信任浏览器证书警告！点击地址栏的"不安全"→继续访问','yellow',8000);
+                    }else{
+                        toast('WebSocket 连接失败','red');
+                    }
+                }
+            };
+            ws.onclose=()=>{ss('off');retry++;toast('连接中断，正在重连...','red');setTimeout(connect,Math.min(1500*Math.pow(1.5,retry),10000))};
+        }
+        function handle(m){
+            switch(m.type){
+                case'pair_request':document.getElementById('pair-modal').classList.add('show');document.getElementById('pair-code').focus();break;
+                case'pair_confirm':if(m.status==='accepted'){document.getElementById('pair-modal').classList.remove('show');ss('on');toast('配对成功','green')}else{document.getElementById('pair-code').value='';toast('配对码错误','red')}break;
+                case'state_sync':state=m.data;renderGrid();break;
+                case'config_sync':case'config_updated':cfg=m.data||{layout:[]};if(!cfg.layout)cfg.layout=defaultLayout();normalizeLayout();renderGrid();break;
+                case'voice_result':handleVoiceDone(m);break;
+                case'workflow_done':handleWorkflowDone(m);break;
+                case'workflow_error':handleWorkflowError(m);break;
+                case'clipboard_sync':
+                    state.clipboard = m.data;
+                    renderGrid();
+                    break;
+                case'clipboard_set':
+                    if(m.status === 'ok'){
+                        toast('剪贴板已更新','green');
+                    } else {
+                        toast('剪贴板更新失败: ' + m.message,'red');
+                    }
+                    break;
+            }
+        }
+        function ss(c){document.getElementById('sp').className='sp '+c}
+
+        /* ===== NORMALIZE SYSTEM ITEMS ===== */
+        function normalizeLayout(){
+            const defaults=defaultLayout();
+            const deleted=JSON.parse(localStorage.getItem('rp_deleted')||'[]');
+            const existingIds=new Set(cfg.layout.map(it=>it.id));
+            defaults.forEach(d=>{
+                if(!existingIds.has(d.id)&&!deleted.includes(d.id))cfg.layout.push({...d});
+            });
+            const seen=new Set();
+            cfg.layout=cfg.layout.filter(it=>{
+                if(seen.has(it.id))return false;
+                seen.add(it.id);
+                return true;
+            });
+        }
+
+        /* ===== RENDER ===== */
+        function renderGrid(){
+            const wrap=document.getElementById('grid-wrap');
+            const wrapW=wrap.parentElement.clientWidth-24;
+            const cs=Math.floor((wrapW-(COLS-1)*GAP)/COLS);
+            const S=cs;
+
+            let maxR=0;
+            cfg.layout.forEach(it=>{const r=(it.grid_y||0)+(it.grid_h||1);if(r>maxR)maxR=r});
+            wrap.style.height=(maxR*(S+GAP))+'px';
+            wrap.innerHTML='';
+
+            // Ghost cells
+            for(let r=0;r<maxR;r++)for(let c=0;c<COLS;c++){
+                const g=document.createElement('div');g.className='gc';
+                g.style.cssText=`left:${c*(S+GAP)}px;top:${r*(S+GAP)}px;width:${S}px;height:${S}px`;
+                wrap.appendChild(g);
+            }
+
+            // Items
+            cfg.layout.forEach(it=>{
+                const gw=it.grid_w||1,gh=it.grid_h||1,gx=Math.min(it.grid_x||0,COLS-1),gy=it.grid_y||0;
+                const el=document.createElement('div');el.className='gi';
+                const w=gw*(S+GAP)-GAP,h=gh*(S+GAP)-GAP;
+                el.style.cssText=`left:${gx*(S+GAP)}px;top:${gy*(S+GAP)}px;width:${w}px;height:${h}px`;
+                el.dataset.id=it.id;
+
+                if(it.type==='button')renderBtnItem(el,it);
+                else if(it.type==='voice')renderVoiceItem(el,it);
+                else if(it.type==='voice_workflow')renderVoiceWorkflowItem(el,it);
+                else if(it.type.startsWith('stat_'))renderStatItem(el,it);
+                else if(it.type==='clipboard')renderClipboardItem(el,it);
+
+                el.innerHTML+=`<span class="db" onclick="event.stopPropagation();di('${it.id}')">&times;</span>`;
+
+                if(editMode)setupDrag(el,it,S);
+                wrap.appendChild(el);
+            });
+            wrap.classList.toggle('edit-mode',editMode);
+
+            // Add button in edit mode
+            if(editMode){
+                const addEl=document.createElement('div');addEl.className='gi add-item';
+                addEl.style.cssText=`left:0;top:${maxR*(S+GAP)}px;width:${S}px;height:${S}px`;
+                addEl.innerHTML='<span style="font-size:24px">+</span><span>Add</span>';
+                addEl.addEventListener('click',oa);
+                wrap.appendChild(addEl);
+                wrap.style.height=((maxR+1)*(S+GAP))+'px';
+            }
+        }
+
+        function vibrate(duration) {
+            try {
+                if (navigator.vibrate) {
+                    navigator.vibrate(duration);
+                } else if (navigator.webkitVibrate) {
+                    navigator.webkitVibrate(duration);
+                }
+            } catch (e) {
+                console.log('Vibration not supported');
+            }
+        }
+
+        function renderBtnItem(el,it){
+            el.classList.add('btn-item');
+            if(it.mode==='toggle'&&it.state_binding&&state[it.state_binding])el.classList.add('active');
+            el.innerHTML=`<span class="ai">${gi(it.icon)}</span><span class="al">${it.name}</span>`+el.innerHTML;
+            
+            const triggerAction = (actions) => {
+                vibrate([50, 30, 50]); // 两段式振动，更明显
+                let a=actions;
+                if(a&&!Array.isArray(a))a=[a];
+                if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'trigger',button_id:it.id,actions:a}));
+            };
+            
+            if(it.mode==='long_press'&&it.actions_long){
+                let timer=null;let fired=false;
+                const start=()=>{fired=false;timer=setTimeout(()=>{fired=true;triggerAction(it.actions_long);},500);};
+                const end=()=>{clearTimeout(timer);if(!fired){if(editMode)return;triggerAction(it.actions||[]);}};
+                el.addEventListener('touchstart',start,{passive:true});
+                el.addEventListener('touchend',end);
+                el.addEventListener('touchcancel',()=>clearTimeout(timer));
+                el.addEventListener('mousedown',start);
+                el.addEventListener('mouseup',end);
+                el.addEventListener('mouseleave',()=>clearTimeout(timer));
+            }else{
+                el.addEventListener('click',()=>{
+                    if(editMode)return;
+                    const actions = it.mode==='toggle'?(state[it.state_binding]?(it.actions_off||[]):(it.actions_on||[])):(it.actions||[]);
+                    triggerAction(actions);
+                });
+                el.addEventListener('touchstart', (e) => {
+                    if(editMode)return;
+                    vibrate(50); // 触摸开始时就振动
+                }, {passive: true});
+            }
+        }
+
+        
+
+        function renderVoiceItem(el, it) {
+            el.classList.add('voice-item');
+            el.innerHTML = `<span class="ai">🎤</span><span class="al">${it.name || 'Voice'}</span>`;
+            var pressed = false;
+            function onStart(e) {
+                e.preventDefault();
+                if (editMode || pressed) return;
+                pressed = true;
+                voiceStart();
+            }
+            function onEnd(e) {
+                if (!pressed) return;
+                pressed = false;
+                voiceStop();
+            }
+            el.addEventListener('touchstart', onStart, {passive: false});
+            el.addEventListener('touchend', onEnd);
+            el.addEventListener('touchcancel', onEnd);
+            el.addEventListener('mousedown', onStart);
+            el.addEventListener('mouseup', onEnd);
+            el.addEventListener('mouseleave', onEnd);
+        }
+
+        function renderVoiceWorkflowItem(el, it) {
+            el.classList.add('voice-item');
+            el.innerHTML = `<span class="ai">${gi(it.icon || 'mic')}</span><span class="al">${it.name || 'Workflow'}</span>`;
+            var pressed = false;
+            function onStart(e) {
+                e.preventDefault();
+                if (editMode || pressed) return;
+                pressed = true;
+                voiceStart({workflowId: it.workflow_id || it.id, element: el});
+            }
+            function onEnd(e) {
+                if (!pressed) return;
+                pressed = false;
+                voiceStop();
+            }
+            el.addEventListener('touchstart', onStart, {passive: false});
+            el.addEventListener('touchend', onEnd);
+            el.addEventListener('touchcancel', onEnd);
+            el.addEventListener('mousedown', onStart);
+            el.addEventListener('mouseup', onEnd);
+            el.addEventListener('mouseleave', onEnd);
+        }
+
+        function renderStatItem(el,it){
+            el.classList.add('stat-item');
+            const colors={stat_cpu:'var(--accent)',stat_mem:'var(--green)',stat_disk:'var(--red)',stat_uptime:'var(--orange)'};
+            let val='',pct=0;
+            if(it.type==='stat_cpu'){val=(state.cpu_percent||0).toFixed(1)+'%';pct=state.cpu_percent||0}
+            else if(it.type==='stat_mem'){val=(state.memory_used_gb||0)+'/'+(state.memory_total_gb||0)+'G';pct=state.memory_percent||0}
+            else if(it.type==='stat_disk'){val=(state.disk_used_gb||0)+'/'+(state.disk_total_gb||0)+'G';pct=state.disk_percent||0}
+            else if(it.type==='stat_uptime'){const u=state.uptime_hours||0;const h=Math.floor(u),m=Math.round((u-h)*60);val=h+'h'+(m>0?m+'m':'');pct=Math.min(100,u/24*100)}
+            else if(it.type==='stat_gpu'){val=(state.gpu_percent||0).toFixed(1)+'%';pct=state.gpu_percent||0}
+            else if(it.type==='stat_vram'){val=(state.vram_used_gb||0)+'/'+(state.vram_total_gb||0)+'G';pct=state.vram_total_gb>0?(state.vram_used_gb/state.vram_total_gb*100):0}
+            el.innerHTML=`<div class="sv">${val}</div><div class="sl">${it.name}</div><div class="bar"><div class="bf" style="width:${pct}%;background:${colors[it.type]||'var(--accent)'}"></div></div>`;
+        }
+
+        function renderClipboardItem(el, it){
+            el.classList.add('btn-item');
+            el.style.overflow = 'hidden';
+            el.style.display = 'flex';
+            el.style.flexDirection = 'column';
+            el.style.padding = '8px';
+            el.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-size:10px;opacity:0.7;">${it.name}</span>
+                    <button id="sync-btn-${it.id}" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;">🔄</button>
+                </div>
+                <textarea id="clipboard-text-${it.id}" style="flex:1;width:100%;background:rgba(255,255,255,0.1);border:none;border-radius:8px;color:var(--text);padding:8px;resize:none;font-size:12px;outline:none;"></textarea>
+                <button id="save-btn-${it.id}" style="margin-top:4px;background:var(--accent);border:none;border-radius:8px;color:#fff;padding:6px;font-size:12px;cursor:pointer;">保存到PC</button>
+            ` + el.innerHTML;
+            
+            const textarea = document.getElementById(`clipboard-text-${it.id}`);
+            const saveBtn = document.getElementById(`save-btn-${it.id}`);
+            const syncBtn = document.getElementById(`sync-btn-${it.id}`);
+            
+            if(textarea){
+                textarea.value = state.clipboard || '';
+            }
+            
+            if(saveBtn){
+                saveBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    vibrate([50, 30, 50]);
+                    if(ws && ws.readyState === WebSocket.OPEN){
+                        ws.send(JSON.stringify({
+                            type: 'set_clipboard',
+                            data: textarea.value
+                        }));
+                    }
+                });
+                saveBtn.addEventListener('touchstart', (e) => {
+                    vibrate(50);
+                }, {passive: true});
+            }
+            
+            if(syncBtn){
+                syncBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    vibrate([50, 30, 50]);
+                    if(ws && ws.readyState === WebSocket.OPEN){
+                        ws.send(JSON.stringify({
+                            type: 'get_clipboard'
+                        }));
+                    }
+                });
+                syncBtn.addEventListener('touchstart', (e) => {
+                    vibrate(50);
+                }, {passive: true});
+            }
+        }
+
+        function hasCollision(excludeId,gx,gy,gw,gh){
+            return cfg.layout.some(it=>{
+                if(it.id===excludeId)return false;
+                const ax=it.grid_x||0,ay=it.grid_y||0,aw=it.grid_w||1,ah=it.grid_h||1;
+                return gx<ax+aw&&gx+gw>ax&&gy<ay+ah&&gy+gh>ay;
+            });
+        }
+
+        /* ===== DRAG ===== */
+        function setupDrag(el,it,cellSize){
+            let dragging=false,moved=false,sx,sy,ox,oy;
+            el.addEventListener('touchstart',onDown,{passive:false});
+            el.addEventListener('mousedown',onDown);
+            function onDown(e){
+                if(e.target.classList.contains('db')||e.target.closest('.mp'))return;
+                e.preventDefault();dragging=true;moved=false;
+                const pt=e.touches?e.touches[0]:e;
+                sx=pt.clientX;sy=pt.clientY;ox=it.grid_x||0;oy=it.grid_y||0;
+                el.style.zIndex=20;el.style.transition='none';
+                document.addEventListener('mousemove',onMove);
+                document.addEventListener('touchmove',onMove,{passive:false});
+                document.addEventListener('mouseup',onUp);
+                document.addEventListener('touchend',onUp);
+            }
+            function onMove(e){
+                if(!dragging)return;e.preventDefault();
+                const pt=e.touches?e.touches[0]:e;
+                if(Math.abs(pt.clientX-sx)>5||Math.abs(pt.clientY-sy)>5)moved=true;
+                if(!moved)return;
+                const step=cellSize+GAP;
+                const gx=Math.max(0,Math.min(COLS-(it.grid_w||1),ox+Math.round((pt.clientX-sx)/step)));
+                const gy=Math.max(0,oy+Math.round((pt.clientY-sy)/step));
+                el.style.left=gx*step+'px';el.style.top=gy*step+'px';
+                el._gx=gx;el._gy=gy;
+            }
+            function onUp(){
+                const wasDrag=moved;
+                dragging=false;moved=false;el.style.zIndex='';el.style.transition='';
+                document.removeEventListener('mousemove',onMove);
+                document.removeEventListener('touchmove',onMove);
+                document.removeEventListener('mouseup',onUp);
+                document.removeEventListener('touchend',onUp);
+                if(wasDrag&&el._gx!==undefined){if(!hasCollision(it.id,el._gx,el._gy,it.grid_w||1,it.grid_h||1)){it.grid_x=el._gx;it.grid_y=el._gy}saveCfg();renderGrid()}
+                else if(!wasDrag){oe(it)}
+            }
+        }
+
+        /* ===== EDIT ===== */
+        function toggleEdit(){editMode=!editMode;document.getElementById('tab-edit').classList.toggle('active',!editMode);document.getElementById('tab-export').style.display=editMode?'':'none';document.getElementById('tab-import').style.display=editMode?'':'none';renderGrid()}
+
+        function oa(){
+            editId=null;document.getElementById('mt').textContent='Add Item';
+            document.getElementById('f-name').value='';document.getElementById('f-icon').value='\u2b50';
+            document.getElementById('f-mode').value='normal';
+            document.getElementById('f-actions').value='[{"type":"hotkey","value":"ctrl+c"}]';
+            document.getElementById('f-workflow-id').value='wf_'+Date.now();
+            document.getElementById('f-sb').value='';document.getElementById('f-del').classList.add('hidden');
+            document.querySelectorAll('.tp').forEach(x=>x.classList.remove('sel'));
+            document.querySelector('.tp[data-type="button"]').classList.add('sel');
+            document.querySelectorAll('.sp2').forEach(x=>x.classList.remove('sel'));
+            document.querySelector('.sp2[data-w="1"][data-h="1"]').classList.add('sel');
+            updateFieldVisibility();
+            updateIconPreview('\u2b50');
+            document.getElementById('edit-modal').classList.add('show');
+        }
+
+        function oe(it){
+            editId=it.id;document.getElementById('mt').textContent='Edit Item';
+            document.getElementById('f-name').value=it.name||'';document.getElementById('f-icon').value=it.icon||'';
+            document.getElementById('f-mode').value=it.mode||'normal';
+            document.getElementById('f-actions').value=JSON.stringify(it.actions||it.actions_on||[],null,2);
+            document.getElementById('f-actions-long').value=JSON.stringify(it.actions_long||[],null,2);
+            document.getElementById('f-workflow-id').value=it.workflow_id||it.id||'';
+            document.getElementById('f-sb').value=it.state_binding||'';
+            document.getElementById('f-del').classList.remove('hidden');
+            document.querySelectorAll('.tp').forEach(x=>x.classList.toggle('sel',x.dataset.type===it.type));
+            document.querySelectorAll('.sp2').forEach(x=>x.classList.toggle('sel',parseInt(x.dataset.w)===(it.grid_w||1)&&parseInt(x.dataset.h)===(it.grid_h||1)));
+            updateFieldVisibility();
+            updateIconPreview(it.icon);
+            document.getElementById('edit-modal').classList.add('show');
+        }
+
+        // Type picker
+        document.querySelectorAll('.tp').forEach(o=>o.addEventListener('click',()=>{
+            document.querySelectorAll('.tp').forEach(x=>x.classList.remove('sel'));o.classList.add('sel');
+            updateFieldVisibility();
+        }));
+        document.querySelectorAll('.sp2').forEach(o=>o.addEventListener('click',()=>{
+            document.querySelectorAll('.sp2').forEach(x=>x.classList.remove('sel'));o.classList.add('sel');
+        }));
+
+        function updateFieldVisibility(){
+            const tp=document.querySelector('.tp.sel')?.dataset.type||'button';
+            const isBtn=tp==='button';
+            const isWorkflow=tp==='voice_workflow';
+            document.querySelectorAll('.item-fields').forEach(f=>f.style.display=(isBtn||isWorkflow)?'':'none');
+            document.querySelectorAll('.btn-fields').forEach(f=>f.style.display=isBtn?'':'none');
+            document.querySelectorAll('.workflow-fields').forEach(f=>f.style.display=isWorkflow?'':'none');
+            document.querySelectorAll('.action-fields').forEach(f=>f.style.display=(isBtn||isWorkflow)?'':'none');
+            const hotkeyBtn=document.getElementById('hotkey-record-btn');
+            if(hotkeyBtn)hotkeyBtn.style.display=isBtn?'':'none';
+            const mode=document.getElementById('f-mode').value;
+            const lpFields=document.getElementById('long-press-fields');
+            if(lpFields) lpFields.style.display=(isBtn&&mode==='long_press')?'':'none';
+        }
+        document.getElementById('f-mode').addEventListener('change',updateFieldVisibility);
+
+        /* ===== EMOJI PICKER ===== */
+        const EMOJI_STR="\ud83d\udd07\ud83d\udd09\ud83d\udd0a\ud83d\udd0b\ud83d\udd0c\ud83d\udd06\ud83d\udd05\u2600\ud83c\udf19\u26c5\ud83d\udcf1\ud83d\udcbb\ud83d\udcfa\ud83c\udfae\ud83c\udfb5\ud83c\udfb6\ud83c\udfac\ud83c\udfa4\ud83c\udfa8\ud83d\uddbc\ud83d\udcf7\ud83d\udcf8\ud83c\udf05\ud83c\udf04\ud83c\udf08\ud83d\ude80\ud83d\ude97\u2708\ud83d\udca4\u2764\ud83d\udc94\ud83d\udd25\u2b50\ud83d\udc4d\ud83d\udc4e\ud83d\udc4f\ud83d\ude02\ud83d\ude0e\ud83e\udd14\ud83e\udd2f\ud83c\udf89\ud83c\udf81\ud83c\udf86\ud83c\udf87\ud83c\udf82\u2705\u274c\u26a1\ud83d\udca5\ud83d\udcab\ud83d\udd12\ud83d\udd13\ud83d\udd11\ud83d\udee1\u2699\ud83d\udd04\u23ed\u23ee\u23f8\u23f9\ud83c\udfb2\ud83c\udfaf\ud83d\udd2b\ud83c\udfd4\u26f3\u26bd\ud83c\udfc0\ud83c\udfc8\ud83c\udfbe\ud83c\udfc4\ud83d\udeb6\ud83c\udfc3\ud83d\udc83\ud83d\udd7a\ud83e\uddd1\ud83d\udc36\ud83d\udc31\ud83d\udc3b\ud83d\udc3c\ud83d\udc3d\ud83e\udd8a\ud83e\udd81\ud83d\udc0d\ud83d\udc22\ud83e\udd8e\ud83d\udc1d\ud83d\udc1e\ud83e\udd8b\ud83e\udd8d\ud83e\udd84\ud83d\udc71\ud83d\udc51\ud83d\udc8e\ud83c\udfc6\ud83c\udfc5\ud83d\udcb0\ud83d\udcb5\ud83d\udcb3\ud83d\udcb8\ud83d\udcb9\ud83d\udcca\ud83d\udcc8\ud83d\udcc9\ud83d\udcc2\ud83d\udcc1\ud83d\udcc4\ud83d\udcc5\ud83d\udcc6\ud83d\udccb\ud83d\udccc\ud83d\udccd\ud83d\udcce\ud83d\udccf\ud83d\udcd0\ud83d\udcd1\ud83d\udcd2\ud83d\udcd3\ud83d\udcd4\ud83d\udcd5\ud83d\udcd6\ud83d\udcd7\ud83d\udcd8\ud83d\udcd9\ud83d\udcda\ud83d\udcdc\ud83d\udcdd\ud83d\udcde\ud83d\udcdf\ud83d\udce0\ud83d\udce1\ud83d\udce2\ud83d\udce3\ud83d\udce4\ud83d\udce5\ud83d\udce6\ud83d\udce7\ud83d\udce8\ud83d\udce9\ud83d\udcea\ud83d\udceb\ud83d\udcec\ud83d\udced\ud83d\udcee\ud83d\udcef\ud83d\udcf0\ud83d\udd0d\ud83d\udd0e\ud83d\udd0f\ud83d\udd10\ud83d\udd14\ud83d\udd17\ud83d\udd1c\ud83d\udd19\ud83d\udd1a\ud83d\udd1b\ud83d\udd1d\ud83d\udd1e\ud83d\udd1f\ud83d\udd20\ud83d\udd21\ud83d\udd22\ud83d\udd23\ud83d\udd24\ud83d\udd25\ud83d\udd26\ud83d\udd27\ud83d\udd28\ud83d\udd29\ud83d\udd2a\ud83d\udd2b\ud83d\udd2e\ud83d\udd2f\ud83d\udd30\ud83d\udd31\ud83d\udd32\ud83d\udd33\ud83d\udd34\ud83d\udd35\ud83d\udd36\ud83d\udd37\ud83d\udd38\ud83d\udd39\ud83d\udd3a\ud83d\udd3b\ud83d\udd3c\ud83d\udd3d";
+        const ep=document.getElementById('emoji-picker');
+        if(ep){for(const e of EMOJI_STR){const s=document.createElement('span');s.textContent=e;s.addEventListener('click',()=>{document.getElementById('f-icon').value=e;ep.style.display='none';updateIconPreview(e)});ep.appendChild(s)}}
+
+        /* ===== ICON UPLOAD ===== */
+        function updateIconPreview(icon) {
+            const preview = document.getElementById('icon-preview');
+            if (!preview) return;
+            if (icon && icon.startsWith('data:image')) {
+                preview.innerHTML = `<img src="${icon}" alt="icon">`;
+            } else {
+                preview.innerHTML = `<span>${gi(icon)}</span>`;
+            }
+        }
+
+        function handleIconUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // 检查文件大小 (限制 500KB)
+            if (file.size > 500 * 1024) {
+                alert('图片太大了！请选择小于 500KB 的图片');
+                e.target.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const dataUrl = e.target.result;
+                document.getElementById('f-icon').value = dataUrl;
+                updateIconPreview(dataUrl);
+                // 清空 input 以便可以重新选择
+                document.getElementById('icon-upload-input').value = '';
+            };
+            reader.onerror = function() {
+                alert('图片读取失败，请重试');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 监听图标输入变化，更新预览
+        document.getElementById('f-icon').addEventListener('input', function(e) {
+            updateIconPreview(e.target.value);
+        });
+
+        function cm(){document.getElementById('edit-modal').classList.remove('show');editId=null}
+        function ds(){
+            const tp=document.querySelector('.tp.sel')?.dataset.type||'button';
+            const n=document.getElementById('f-name').value.trim();
+            const ic=document.getElementById('f-icon').value.trim();
+            const mo=document.getElementById('f-mode').value;
+            let ac;try{ac=JSON.parse(document.getElementById('f-actions').value);if(ac&&!Array.isArray(ac))ac=[ac]}catch(e){ac=[]}
+            let acLong;try{acLong=JSON.parse(document.getElementById('f-actions-long').value);if(acLong&&!Array.isArray(acLong))acLong=[acLong]}catch(e){acLong=[]}
+            const sb=document.getElementById('f-sb').value.trim();
+            const workflowId=document.getElementById('f-workflow-id').value.trim()||('wf_'+Date.now());
+            const sel=document.querySelector('.sp2.sel');
+            var gw=sel?parseInt(sel.dataset.w):1,gh=sel?parseInt(sel.dataset.h):1
+
+            if(tp!=='button'&&tp!=='voice_workflow'&&!n){
+                const names={stat_cpu:'CPU',stat_mem:'Memory',stat_disk:'Disk',stat_uptime:'Uptime',voice:'Voice'};
+                var finalName=names[tp]||tp;
+            }else if(!n){return}else{var finalName=n}
+
+            const pos=findSpot(gw,gh);
+            const itemData={type:tp,name:finalName,icon:ic,mode:mo,grid_w:gw,grid_h:gh};
+            if(tp==='button'){
+                itemData.actions=ac;
+                itemData.state_binding=mo==='toggle'?sb:undefined;
+                itemData.actions_on=mo==='toggle'?ac:undefined;
+                itemData.actions_off=mo==='toggle'?ac:undefined;
+                itemData.actions_long=mo==='long_press'?acLong:undefined;
+            }else if(tp==='voice_workflow'){
+                itemData.workflow_id=workflowId;
+                itemData.actions=ac;
+            }else if(tp==='voice'){
+                itemData.actions=[];
+            }
+            if(editId){
+                const i=cfg.layout.findIndex(x=>x.id===editId);
+                if(i>=0)cfg.layout[i]={...cfg.layout[i],...itemData};
+            }else{
+                const newId=tp.startsWith('stat_')?tp:'btn_'+Date.now();
+                // Don't duplicate system items
+                cfg.layout=cfg.layout.filter(x=>x.id!==newId);
+                cfg.layout.push({id:newId,...itemData,grid_x:pos.x,grid_y:pos.y});
+            }
+            saveCfg();cm();
+        }
+
+        function findSpot(w,h){
+            let maxY=0;cfg.layout.forEach(it=>{const r=(it.grid_y||0)+(it.grid_h||1);if(r>maxY)maxY=r});
+            return{x:0,y:maxY};
+        }
+
+        function di(id){if(!confirm('Delete?'))return;const sysIds=defaultLayout().map(d=>d.id);if(sysIds.includes(id)){const d=JSON.parse(localStorage.getItem('rp_deleted')||'[]');if(!d.includes(id)){d.push(id);localStorage.setItem('rp_deleted',JSON.stringify(d))}}cfg.layout=cfg.layout.filter(x=>x.id!==id);saveCfg()}
+        function saveCfg(){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'save_config',config:cfg}))}
+
+        /* ===== PAIR ===== */
+        function sp(){
+            const c=document.getElementById('pair-code').value.trim();
+            if(c.length!==4){
+                toast('请输入4位配对码','yellow');
+                return;
+            }
+            if(!ws||ws.readyState!==WebSocket.OPEN){
+                toast('WebSocket 未连接，请刷新页面重试','red');
+                connect(); // 尝试重新连接
+                return;
+            }
+            ws.send(JSON.stringify({type:'pair_request',code:c}));
+        }
+        document.getElementById('pair-code').addEventListener('keydown',e=>{if(e.key==='Enter')sp()});
+
+        if(!window._isDesktop)connect();
+
+        /* ===== TOAST ===== */
+        function toast(msg, type='green', ms=3000){
+            const wrap=document.getElementById('toast-wrap');
+            const el=document.createElement('div');
+            el.className='toast '+type;
+            el.textContent=msg;
+            wrap.appendChild(el);
+            setTimeout(()=>{el.classList.add('fade-out');setTimeout(()=>el.remove(),300)},ms);
+        }
+
+        /* ===== HOTKEY RECORDING ===== */
+        let _hkRecording=false;
+        function startHotkeyRecord(){
+            if(_hkRecording)return;
+            _hkRecording=true;
+            const btn=document.getElementById('hotkey-record-btn');
+            const origText=btn.textContent;
+            btn.textContent='\u{1f534} 录制中... ESC取消';
+            btn.style.background='var(--red)';
+            const modifiers=['Control','Alt','Shift','Meta'];
+            document.addEventListener('keydown',function handler(e){
+                e.preventDefault();e.stopPropagation();
+                if(e.key==='Escape'){_hkRecording=false;btn.textContent=origText;btn.style.background='';document.removeEventListener('keydown',handler,true);return}
+                const combo=[];
+                if(e.ctrlKey)combo.push('ctrl');
+                if(e.altKey)combo.push('alt');
+                if(e.shiftKey)combo.push('shift');
+                if(e.metaKey)combo.push('win');
+                const k=e.key.toLowerCase();
+                if(!modifiers.includes(e.key))combo.push(k);
+                const val=combo.join('+');
+                document.getElementById('f-actions').value=JSON.stringify([{"type":"hotkey","value":val}],null,2);
+                _hkRecording=false;btn.textContent=origText;btn.style.background='';
+                document.removeEventListener('keydown',handler,true);
+                toast('快捷键已录制: '+val,'green');
+            },true);
+        }
+
+        /* ===== SHOW QR ===== */
+        function showQR(){
+            document.getElementById("desktop-landing").style.display="flex";
+            document.body.style.overflow="hidden";
+            fetch("/api/info").then(r=>r.json()).then(info=>{
+                document.getElementById("info-url").textContent=info.url;
+                document.getElementById("info-code").textContent="Pair Code: "+info.pair_code;
+                const qrHtml=info.qr_data_uri?`<img src="${info.qr_data_uri}" alt="QR" style="display:block;width:220px;height:220px;border-radius:12px">`:info.qr_svg;
+                document.getElementById("qr-box").innerHTML=qrHtml;
+            });
+            window._isDesktop=true;
+        }
+
+        /* ===== ADMIN CHECK ===== */
+        fetch("/api/admin").then(r=>r.json()).then(d=>{
+            if(!d.is_admin){
+                const bar=document.createElement('div');
+                bar.className='admin-bar';
+                bar.innerHTML='<span>\u26a0\ufe0f</span> 未以管理员权限运行，部分功能（键盘模拟、音量控制）可能不可用 <span style="margin-left:8px;opacity:.6">\u2715</span>';
+                bar.onclick=()=>bar.remove();
+                document.body.appendChild(bar);
+            }
+        }).catch(()=>{});
+
+        /* ===== CONFIG IMPORT/EXPORT ===== */
+        function exportConfig(){
+            const blob=new Blob([JSON.stringify(cfg,null,2)],{type:'application/json'});
+            const a=document.createElement('a');
+            a.href=URL.createObjectURL(blob);
+            a.download='config.json';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            toast('配置已导出','green');
+        }
+        function importConfig(){
+            const input=document.createElement('input');
+            input.type='file';
+            input.accept='.json';
+            input.onchange=()=>{
+                const file=input.files[0];
+                if(!file)return;
+                const reader=new FileReader();
+                reader.onload=()=>{
+                    try{
+                        const newCfg=JSON.parse(reader.result);
+                        if(!newCfg.layout||!Array.isArray(newCfg.layout))throw new Error('invalid');
+                        cfg=newCfg;
+                        saveCfg();
+                        normalizeLayout();
+                        renderGrid();
+                        toast('配置已导入','green');
+                    }catch(e){
+                        toast('JSON 格式错误，导入失败','red');
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        /* ===== VOICE RECORDING (MediaRecorder + WebSocket binary) ===== */
+        var _voiceRecording = false;
+        var _voiceMediaRecorder = null;
+        var _voiceStream = null;
+        var _voiceChunks = [];
+        var _voiceContext = null;
+
+        function voiceStart(context) {
+            if (_voiceRecording) return;
+
+            _voiceContext = context || null;
+            var btn = document.querySelector('.voice-item.recording') || document.getElementById('voice-btn');
+            var overlay = document.getElementById('voice-overlay');
+            var statusText = document.getElementById('voice-status-text');
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                console.error('[VOICE] navigator.mediaDevices not available - HTTPS required');
+                toast('\u9700\u8981HTTPS\u624d\u80fd\u4f7f\u7528\u8bed\u97f3', 'red');
+                return;
+            }
+
+            _voiceRecording = true;
+            // Highlight the clicked voice grid item
+            var allVoiceItems = document.querySelectorAll('.voice-item');
+            allVoiceItems.forEach(function(v) { v.classList.add('recording'); });
+            overlay.classList.add('active');
+            overlay.classList.remove('processing');
+            statusText.textContent = '\u5f55\u97f3\u4e2d...';
+            if (navigator.vibrate) navigator.vibrate(30);
+
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+                _voiceStream = stream;
+                _voiceChunks = [];
+
+                var mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' :
+                               MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
+                var options = mimeType ? { mimeType: mimeType } : {};
+                _voiceMediaRecorder = new MediaRecorder(stream, options);
+
+                _voiceMediaRecorder.ondataavailable = function(ev) {
+                    if (ev.data.size > 0) _voiceChunks.push(ev.data);
+                };
+
+                _voiceMediaRecorder.onstop = function() {
+                    var blob = new Blob(_voiceChunks, { type: _voiceMediaRecorder.mimeType || 'audio/webm' });
+                    _voiceChunks = [];
+
+                    if (blob.size < 100) {
+                        voiceReset();
+                        toast('\u5f55\u97f3\u65f6\u95f4\u592a\u77ed', 'yellow');
+                        return;
+                    }
+
+                    document.querySelectorAll('.voice-item').forEach(function(v) { v.classList.remove('recording'); v.classList.add('processing'); });
+                    overlay.classList.remove('active');
+                    overlay.classList.add('processing');
+                    statusText.textContent = '\u8bc6\u522b\u4e2d...';
+
+                    blob.arrayBuffer().then(function(buf) {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            if (_voiceContext && _voiceContext.workflowId) {
+                                ws.send(JSON.stringify({
+                                    type: 'voice_workflow',
+                                    workflow_id: _voiceContext.workflowId,
+                                    audio_data: arrayBufferToBase64(buf)
+                                }));
+                            } else {
+                                ws.send(buf);
+                            }
+                        } else {
+                            voiceReset();
+                            toast('\u672a\u8fde\u63a5\u670d\u52a1\u5668', 'red');
+                        }
+                    });
+                };
+
+                _voiceMediaRecorder.start();
+            }).catch(function(err) {
+                _voiceRecording = false;
+                voiceReset();
+                console.error('[VOICE] Microphone error:', err);
+                toast('\u9ea6\u514b\u98ce\u9519\u8bef: ' + (err.message || err), 'red');
+            });
+        }
+
+        function voiceStop() {
+            if (!_voiceRecording) return;
+            _voiceRecording = false;
+            if (_voiceMediaRecorder && _voiceMediaRecorder.state !== 'inactive') {
+                try { _voiceMediaRecorder.stop(); } catch(ex) {}
+            }
+            if (_voiceStream) {
+                _voiceStream.getTracks().forEach(function(t) { t.stop(); });
+                _voiceStream = null;
+            }
+            if (navigator.vibrate) navigator.vibrate(15);
+        }
+
+        function voiceReset() {
+            _voiceRecording = false;
+            _voiceContext = null;
+            var allVoiceItems = document.querySelectorAll('.voice-item');
+            allVoiceItems.forEach(function(v) { v.classList.remove('recording', 'processing'); });
+            var overlay = document.getElementById('voice-overlay');
+            if (overlay) overlay.classList.remove('active', 'processing');
+        }
+
+        function arrayBufferToBase64(buf) {
+            var bytes = new Uint8Array(buf);
+            var binary = '';
+            var chunkSize = 0x8000;
+            for (var i = 0; i < bytes.length; i += chunkSize) {
+                var chunk = bytes.subarray(i, i + chunkSize);
+                binary += String.fromCharCode.apply(null, chunk);
+            }
+            return btoa(binary);
+        }
+
+        function handleVoiceDone(msg) {
+            voiceReset();
+            if (msg.text) {
+                toast('\u8bc6\u522b\u5b8c\u6210: ' + msg.text.substring(0, 30), 'green');
+            } else if (msg.error) {
+                toast('\u8bc6\u522b\u5931\u8d25: ' + msg.error, 'red');
+            } else {
+                toast('\u672a\u8bc6\u522b\u5230\u8bed\u97f3', 'yellow');
+            }
+        }
+
+        function handleWorkflowDone(msg) {
+            voiceReset();
+            toast('\u5de5\u4f5c\u6d41\u5b8c\u6210: ' + ((msg.text || '').substring(0, 30) || msg.workflow_id), 'green');
+        }
+
+        function handleWorkflowError(msg) {
+            voiceReset();
+            toast('\u5de5\u4f5c\u6d41\u5931\u8d25: ' + (msg.msg || '\u672a\u77e5\u9519\u8bef'), 'red');
+        }
+
+</script>
+
+</body>
+</html>
