@@ -1,4 +1,4 @@
-# -*- mode: python ; coding: utf-8 -*-
+﻿# -*- mode: python ; coding: utf-8 -*-
 """CortexPad PyInstaller config"""
 
 import os
@@ -16,7 +16,9 @@ hiddenimports = [
     'uvicorn.protocols.http.auto',
     'uvicorn.protocols.websockets',
     'uvicorn.protocols.websockets.auto',
+    'uvicorn.loops.selector',
     'fastapi',
+    'fastapi.responses',
     'starlette',
     'starlette.websockets',
     'websockets',
@@ -30,21 +32,33 @@ hiddenimports = [
     'pystray._win32',
     'PIL',
     'PIL.Image',
-    'PIL._tkinter_finder',
     'psutil',
     'qrcode',
     'qrcode.image',
     'qrcode.image.svg',
     'pycaw',
     'comtypes',
+    'comtypes.client',
     'screen_brightness_control',
+    'cryptography',
+    'cryptography.hazmat.primitives',
+    'cryptography.hazmat.primitives.asymmetric',
+    'cryptography.hazmat.primitives.asymmetric.rsa',
+    'cryptography.hazmat.primitives.hashes',
+    'cryptography.hazmat.primitives.serialization',
+    'cryptography.x509',
+    'cryptography.x509.oid',
+    'faster_whisper',
+    'ctranslate2',
+    'keyboard',
 ]
 
 datas = [
     ('static/index.html', 'static'),
-    ('configs/config.json', 'configs'),
     ('icon.png', '.'),
 ]
+
+binaries = []
 
 excludes = [
     'matplotlib',
@@ -68,7 +82,7 @@ excludes = [
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
@@ -100,6 +114,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    uac_admin=False,
-    icon=None,
+    uac_admin=True,
+    icon='icon.png',
 )
