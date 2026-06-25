@@ -4,20 +4,17 @@ import sys
 import asyncio
 import json
 import base64
+import traceback
 import secrets
 import qrcode
 import qrcode.image.svg
 import io
-import ssl
-import subprocess
-import datetime
 from pathlib import Path
 from typing import Set, Dict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 
-# Windows 鎺у埗鍙?UTF-8 鏀寔
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -32,45 +29,7 @@ from voice_recognizer import recognize_voice
 
 app = FastAPI()
 
-# 鍏ㄥ眬鍙橀噺璺熻釜 HTTPS 鐘舵€?
 _use_https = False
-
-def _ensure_self_signed_cert():
-    cert_dir = Path(_base_dir()) / "certs"
-    cert_file = cert_dir / "cert.pem"
-    key_file = cert_dir / "key.pem"
-    if cert_file.exists() and key_file.exists():
-        return str(cert_file), str(key_file)
-    cert_dir.mkdir(exist_ok=True)
-    try:
-        subprocess.run([
-            "openssl", "req", "-x509", "-newkey", "rsa:2048",
-            "-keyout", str(key_file), "-out", str(cert_file),
-            "-days", "365", "-nodes", "-subj", "/CN=CortexPad"
-        ], check=True, capture_output=True, timeout=10)
-        print("[HTTPS] Generated self-signed cert", flush=True)
-    except Exception:
-        print("[HTTPS] openssl not found, using Python crypto...", flush=True)
-        from cryptography import x509 as cx509
-        from cryptography.x509.oid import NameOID
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import rsa
-        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        subject = issuer = cx509.Name([cx509.NameAttribute(NameOID.COMMON_NAME, "CortexPad")])
-        cert = (cx509.CertificateBuilder()
-                .subject_name(subject).issuer_name(issuer)
-                .public_key(key.public_key())
-                .serial_number(cx509.random_serial_number())
-                .not_valid_before(datetime.datetime.utcnow())
-                .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
-                .sign(key, hashes.SHA256()))
-        cert_file.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
-        key_file.write_bytes(key.private_bytes(
-            serialization.Encoding.PEM,
-            serialization.PrivateFormat.TraditionalOpenSSL,
-            serialization.NoEncryption()))
-        print("[HTTPS] Generated cert via Python crypto", flush=True)
-    return str(cert_file), str(key_file)
 
 connected_clients: Set[WebSocket] = set()
 paired_devices: Set[str] = set()
@@ -104,7 +63,6 @@ def generate_qr_text(ip, port, use_https=False):
     return f"{protocol}://{ip}:{port}"
 
 def _base_dir():
-    """Get a writable directory for runtime data (certs, config)."""
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
     else:
@@ -112,7 +70,6 @@ def _base_dir():
 
 
 def _resource_path(relative_path):
-    """Get path to resource - works for dev and PyInstaller onefile builds."""
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
     else:
@@ -200,7 +157,7 @@ async def save_config(config: dict):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    device_id = f"{websocket.client.host}:{websocket.client.port}"
+    device_id = websocket.client.host if websocket.client else "unknown"
 
     if device_id not in paired_devices:
         try:
@@ -209,11 +166,27 @@ async def websocket_endpoint(websocket: WebSocket):
                 "code_length": 4,
                 "hint": "Enter the 4-digit pair code shown on your PC screen"
             })
-            response = await asyncio.wait_for(websocket.receive_json(), timeout=30.0)
+            # Use a task-based timeout instead of asyncio.wait_for to avoid
+            # leaving the WebSocket in an inconsistent state on cancellation.
+            receive_task = asyncio.ensure_future(websocket.receive_json())
+            done, pending = await asyncio.wait({receive_task}, timeout=30.0)
+            if receive_task in pending:
+                receive_task.cancel()
+                try:
+                    await receive_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                print(f"[PAIR] Pairing timeout: {device_id}", flush=True)
+                try:
+                    await websocket.close()
+                except Exception:
+                    pass
+                return
+            response = receive_task.result()
             client_code = str(response.get("code", "")).strip()
             print(f"[PAIR] Device: {device_id}, Input: {client_code}, Expected: {pair_code}", flush=True)
 
-            if (response.get("type") == "pair_request" and client_code == pair_code):
+            if response.get("type") == "pair_request" and client_code == pair_code:
                 paired_devices.add(device_id)
                 await websocket.send_json({"type": "pair_confirm", "status": "accepted"})
                 print(f"[PAIR] Device paired: {device_id}", flush=True)
@@ -221,18 +194,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"type": "pair_confirm", "status": "rejected"})
                 await websocket.close()
                 return
-        except asyncio.TimeoutError:
-            print(f"[PAIR] Pairing timeout: {device_id}", flush=True)
-            try:
-                await websocket.close()
-            except Exception:
-                pass
-            return
         except WebSocketDisconnect:
             print(f"[PAIR] Client disconnected during pairing: {device_id}", flush=True)
             return
         except Exception as e:
-            print(f"[PAIR] Pairing error: {e}", flush=True)
+            print(f"[PAIR] Pairing error: {device_id}, {e}", flush=True)
+            traceback.print_exc()
             try:
                 await websocket.close()
             except Exception:
@@ -243,8 +210,9 @@ async def websocket_endpoint(websocket: WebSocket):
     print(f"[CONN] Device connected: {device_id}, Total: {len(connected_clients)}", flush=True)
 
     try:
+        loop = asyncio.get_event_loop()
         monitor = get_monitor()
-        full_state = monitor.get_full_state()
+        full_state = await loop.run_in_executor(None, monitor.get_full_state)
         await websocket.send_json({"type": "state_sync", "data": full_state})
 
         manager = get_config_manager()
@@ -262,19 +230,20 @@ async def websocket_endpoint(websocket: WebSocket):
         connected_clients.discard(websocket)
         print(f"[CONN] Device disconnected: {device_id}, Total: {len(connected_clients)}", flush=True)
     except Exception as e:
-        print(f"[WS] Error: {e}", flush=True)
+        print(f"[WS] Error for {device_id}: {e}", flush=True)
+        traceback.print_exc()
         connected_clients.discard(websocket)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 async def _handle_voice_recognition(websocket: WebSocket, audio_bytes: bytes):
     try:
         import pyperclip
-        import keyboard
-        print(f"[VOICE] Processing {len(audio_bytes)} bytes of audio...", flush=True)
-        text = await asyncio.get_event_loop().run_in_executor(None, recognize_voice, audio_bytes)
+        text = recognize_voice(audio_bytes)
+        print(f"[VOICE] Recognized: {text}", flush=True)
         if text:
-            print(f"[VOICE] Recognized: {text}", flush=True)
-            pyperclip.copy(text)
-            keyboard.wait("ctrl+v", modifiers=["ctrl"], timeout=3)
             await websocket.send_json({"type": "voice_result", "text": text, "success": True})
         else:
             await websocket.send_json({"type": "voice_result", "text": "", "success": False, "error": "No speech detected"})
@@ -283,50 +252,52 @@ async def _handle_voice_recognition(websocket: WebSocket, audio_bytes: bytes):
         await websocket.send_json({"type": "voice_result", "text": "", "success": False, "error": str(e)})
 
 async def _handle_voice_workflow(websocket: WebSocket, data: dict):
-    workflow_id = str(data.get("workflow_id", "")).strip()
-    audio_b64 = data.get("audio_data", "")
-    try:
-        audio_bytes = base64.b64decode(audio_b64) if audio_b64 else b""
-    except Exception:
-        audio_bytes = b""
+    workflow_id = data.get("workflow_id", "")
+    text = data.get("text", "")
+    print(f"[VOICE] Workflow request: {workflow_id}, text: {text}", flush=True)
 
-    executor = get_executor()
-    actions = []
     manager = get_config_manager()
     cfg = manager.get_config()
-    for item in cfg.get("layout", []):
-        if item.get("workflow_id") == workflow_id:
-            actions = item.get("actions", [])
+    layout = cfg.get("layout", [])
+    button_map = {item.get("id", ""): item for item in layout if item.get("type") == "button"}
+
+    matched_button = None
+    text_lower = text.lower()
+    for btn in layout:
+        if btn.get("type") != "button":
+            continue
+        btn_name = btn.get("name", "").lower()
+        if btn_name and btn_name in text_lower:
+            matched_button = btn
+            break
+        btn_id = btn.get("id", "").lower()
+        if btn_id and btn_id in text_lower:
+            matched_button = btn
             break
 
-    if not workflow_id:
-        await websocket.send_json({"type": "workflow_error", "workflow_id": workflow_id, "msg": "workflow_id is required"})
-        return
-    if not actions:
-        await websocket.send_json({"type": "workflow_error", "workflow_id": workflow_id, "msg": "No actions defined for this workflow"})
-        return
-
-    try:
-        voice_text = ""
-        if audio_bytes:
-            print(f"[WORKFLOW] Recognizing voice: {len(audio_bytes)} bytes", flush=True)
-            loop = asyncio.get_event_loop()
-            voice_text = await loop.run_in_executor(None, recognize_voice, audio_bytes)
-            print(f"[WORKFLOW] Recognized: {voice_text}", flush=True)
-
-        print(f"[WORKFLOW] Executing: {workflow_id}, {len(actions)} actions", flush=True)
-        variables = {"voice_text": voice_text}
-        success = await loop.run_in_executor(None, executor.execute_actions, actions, variables)
-
-        if success:
-            await websocket.send_json({"type": "workflow_done", "workflow_id": workflow_id, "text": voice_text})
-            monitor = get_monitor()
-            state = monitor.get_full_state()
-            await websocket.send_json({"type": "state_sync", "data": state})
+    if matched_button:
+        actions = matched_button.get("actions", [])
+        if not actions and matched_button.get("mode") == "toggle":
+            actions = matched_button.get("actions_on", [])
+        if actions:
+            try:
+                executor = get_executor()
+                loop = asyncio.get_event_loop()
+                success = await loop.run_in_executor(None, executor.execute_actions, actions)
+                if success:
+                    monitor = get_monitor()
+                    state = await loop.run_in_executor(None, monitor.get_full_state)
+                    await websocket.send_json({"type": "state_sync", "data": state})
+                    await websocket.send_json({"type": "workflow_done", "workflow_id": workflow_id, "text": f"Executed: {matched_button.get('name', '')}"})
+                else:
+                    await websocket.send_json({"type": "workflow_error", "workflow_id": workflow_id, "msg": "Action execution failed"})
+            except Exception as e:
+                print(f"[VOICE] Action error: {e}", flush=True)
+                await websocket.send_json({"type": "workflow_error", "workflow_id": workflow_id, "msg": str(e)})
         else:
-            await websocket.send_json({"type": "workflow_error", "workflow_id": workflow_id, "msg": "Execution failed"})
-    except Exception as e:
-        await websocket.send_json({"type": "workflow_error", "workflow_id": workflow_id, "msg": str(e)})
+            await websocket.send_json({"type": "workflow_error", "workflow_id": workflow_id, "msg": "No actions configured for this button"})
+    else:
+        await websocket.send_json({"type": "workflow_error", "workflow_id": workflow_id, "msg": f"No matching button found for: {text}"})
 
 async def handle_client_message(websocket: WebSocket, data: dict):
     msg_type = data.get("type", "")
@@ -342,7 +313,7 @@ async def handle_client_message(websocket: WebSocket, data: dict):
 
         if success:
             monitor = get_monitor()
-            state = monitor.get_full_state()
+            state = await loop.run_in_executor(None, monitor.get_full_state)
             await websocket.send_json({"type": "state_sync", "data": state})
         else:
             await websocket.send_json({"type": "error", "message": "Action failed"})
@@ -390,17 +361,18 @@ async def pair_code_rotation_loop():
 
 async def state_monitor_loop():
     monitor = get_monitor()
+    loop = asyncio.get_event_loop()
     print("[MONITOR] State monitor started", flush=True)
     while True:
         await asyncio.sleep(1.0)
-        changed = monitor.check_state_changed()
+        # Run blocking state checks in a thread to avoid blocking the event loop
+        changed = await loop.run_in_executor(None, monitor.check_state_changed)
         if changed:
             await broadcast({"type": "state_sync", "data": changed})
 
 @app.on_event("startup")
 async def startup_event():
     global pair_code
-    # 濡傛灉 pair_code 宸茬粡琚閮紙main.py锛夎缃紝灏变笉瑕侀噸鏂扮敓鎴?
     if pair_code == "0000" or not pair_code:
         pair_code = generate_pair_code()
     ip = get_local_ip()
@@ -455,28 +427,9 @@ async def startup_event():
 
 def run_server():
     global _use_https
-    is_admin_user = False
-    try:
-        import ctypes
-        is_admin_user = ctypes.windll.shell32.IsUserAnAdmin() != 0
-    except Exception:
-        pass
-
-    if not is_admin_user:
-        print("[WARNING] Not running as admin. Some features may not work.", flush=True)
-        print("[TIP] Right-click and run as administrator for full functionality.", flush=True)
-        print("", flush=True)
-
-    try:
-        cert_file, key_file = _ensure_self_signed_cert()
-        print("[HTTPS] Starting with SSL on port 8765", flush=True)
-        _use_https = True  # 鏍囪浣跨敤 HTTPS
-        uvicorn.run(app, host="0.0.0.0", port=8765, log_level="info",
-                    ssl_certfile=cert_file, ssl_keyfile=key_file)
-    except Exception as e:
-        print(f"[HTTPS] Failed: {e}, falling back to HTTP", flush=True)
-        _use_https = False  # 鏍囪浣跨敤 HTTP
-        uvicorn.run(app, host="0.0.0.0", port=8765, log_level="info")
+    _use_https = False
+    print("[HTTP] Starting on port 8765", flush=True)
+    uvicorn.run(app, host="0.0.0.0", port=8765, log_level="info")
 
 if __name__ == "__main__":
     run_server()

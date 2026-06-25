@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
-"""System state monitor - periodically check volume/brightness/processes"""
+"""System state monitor for volume, brightness, processes, and metrics."""
+import subprocess
 import time
-import psutil
 from typing import Optional, Set
+
+import psutil
+
+
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 class StateMonitor:
@@ -12,10 +17,17 @@ class StateMonitor:
         self._process_interval: float = 3.0
         self._last_volume_check: float = 0
         self._last_system_check: float = 0
-        self._system_interval: float = 2.0  # 每2秒检查一次系统指标
+        self._system_interval: float = 2.0
         self._last_clipboard: str = ""
         self._last_clipboard_check: float = 0
-        self._clipboard_interval: float = 1.0  # 每1秒检查一次剪贴板
+        self._clipboard_interval: float = 1.0
+        self._last_gpu_query: float = 0
+        self._gpu_interval: float = 2.0
+        self._gpu_cache: dict = {
+            "gpu_percent": 0.0,
+            "vram_used_gb": 0.0,
+            "vram_total_gb": 0.0,
+        }
 
     def get_full_state(self) -> dict:
         state = {
@@ -34,7 +46,7 @@ class StateMonitor:
             "gpu_percent": self._get_gpu(),
             "vram_used_gb": self._get_vram_used(),
             "vram_total_gb": self._get_vram_total(),
-            "clipboard": self._get_clipboard()
+            "clipboard": self._get_clipboard(),
         }
         self._last_state = state.copy()
         return state
@@ -65,7 +77,6 @@ class StateMonitor:
                 new_state["running_apps"] = apps
                 changed = True
 
-        # 定期检查系统指标（CPU、GPU、显存、内存、磁盘）
         if now - self._last_system_check >= self._system_interval:
             self._last_system_check = now
             cpu = self._get_cpu()
@@ -78,17 +89,19 @@ class StateMonitor:
             gpu = self._get_gpu()
             vram_used = self._get_vram_used()
             vram_total = self._get_vram_total()
-            
-            if (cpu != new_state.get("cpu_percent") or
-                mem != new_state.get("memory_percent") or
-                mem_used != new_state.get("memory_used_gb") or
-                mem_total != new_state.get("memory_total_gb") or
-                disk != new_state.get("disk_percent") or
-                disk_used != new_state.get("disk_used_gb") or
-                disk_total != new_state.get("disk_total_gb") or
-                gpu != new_state.get("gpu_percent") or
-                vram_used != new_state.get("vram_used_gb") or
-                vram_total != new_state.get("vram_total_gb")):
+
+            if (
+                cpu != new_state.get("cpu_percent")
+                or mem != new_state.get("memory_percent")
+                or mem_used != new_state.get("memory_used_gb")
+                or mem_total != new_state.get("memory_total_gb")
+                or disk != new_state.get("disk_percent")
+                or disk_used != new_state.get("disk_used_gb")
+                or disk_total != new_state.get("disk_total_gb")
+                or gpu != new_state.get("gpu_percent")
+                or vram_used != new_state.get("vram_used_gb")
+                or vram_total != new_state.get("vram_total_gb")
+            ):
                 new_state["cpu_percent"] = cpu
                 new_state["memory_percent"] = mem
                 new_state["memory_used_gb"] = mem_used
@@ -101,7 +114,6 @@ class StateMonitor:
                 new_state["vram_total_gb"] = vram_total
                 changed = True
 
-        # 检查剪贴板变化
         if now - self._last_clipboard_check >= self._clipboard_interval:
             self._last_clipboard_check = now
             clipboard = self._get_clipboard()
@@ -115,10 +127,10 @@ class StateMonitor:
         return None
 
     def _get_volume_interface(self):
-        """Get volume interface using new pycaw API"""
         import comtypes
-        comtypes.CoInitialize()
         from pycaw.pycaw import AudioUtilities
+
+        comtypes.CoInitialize()
         speakers = AudioUtilities.GetSpeakers()
         return speakers.EndpointVolume
 
@@ -139,6 +151,7 @@ class StateMonitor:
     def _get_brightness(self) -> int:
         try:
             import screen_brightness_control as sbc
+
             brightness = sbc.get_brightness()
             if isinstance(brightness, list):
                 brightness = brightness[0]
@@ -172,55 +185,70 @@ class StateMonitor:
 
     def _get_disk(self) -> float:
         try:
-            return psutil.disk_usage('C:\\').percent
+            return psutil.disk_usage("C:\\").percent
         except Exception:
             return 0.0
 
     def _get_disk_used(self) -> float:
         try:
-            return round(psutil.disk_usage('C:\\').used / (1024**3), 1)
+            return round(psutil.disk_usage("C:\\").used / (1024**3), 1)
         except Exception:
             return 0.0
 
     def _get_disk_total(self) -> float:
         try:
-            return round(psutil.disk_usage('C:\\').total / (1024**3), 1)
+            return round(psutil.disk_usage("C:\\").total / (1024**3), 1)
         except Exception:
             return 0.0
 
     def _get_uptime(self) -> float:
         try:
-            boot = psutil.boot_time()
-            import time
-            return round((time.time() - boot) / 3600, 1)
+            return round((time.time() - psutil.boot_time()) / 3600, 1)
         except Exception:
             return 0.0
+
+    def _query_nvidia_smi(self) -> dict:
+        now = time.time()
+        if now - self._last_gpu_query < self._gpu_interval:
+            return self._gpu_cache
+
+        self._last_gpu_query = now
+        try:
+            out = subprocess.check_output(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu,memory.used,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                encoding="utf-8",
+                errors="replace",
+                stderr=subprocess.DEVNULL,
+                creationflags=_CREATE_NO_WINDOW,
+                timeout=2,
+            ).strip()
+            first_line = out.splitlines()[0]
+            parts = [p.strip() for p in first_line.split(",")]
+            self._gpu_cache = {
+                "gpu_percent": float(parts[0]),
+                "vram_used_gb": round(float(parts[1]) / 1024, 1),
+                "vram_total_gb": round(float(parts[2]) / 1024, 1),
+            }
+        except Exception:
+            self._gpu_cache = {
+                "gpu_percent": 0.0,
+                "vram_used_gb": 0.0,
+                "vram_total_gb": 0.0,
+            }
+        return self._gpu_cache
 
     def _get_gpu(self) -> float:
-        try:
-            import subprocess
-            out = subprocess.check_output(["nvidia-smi","--query-gpu=utilization.gpu","--format=csv,noheader,nounits"], encoding="utf-8").strip()
-            return float(out.split(",")[0].strip())
-        except Exception:
-            return 0.0
+        return self._query_nvidia_smi()["gpu_percent"]
 
     def _get_vram_used(self) -> float:
-        try:
-            import subprocess
-            out = subprocess.check_output(["nvidia-smi","--query-gpu=memory.used,memory.total","--format=csv,noheader,nounits"], encoding="utf-8").strip()
-            parts = out.split(",")
-            return round(float(parts[0].strip()) / 1024, 1)
-        except Exception:
-            return 0.0
+        return self._query_nvidia_smi()["vram_used_gb"]
 
     def _get_vram_total(self) -> float:
-        try:
-            import subprocess
-            out = subprocess.check_output(["nvidia-smi","--query-gpu=memory.used,memory.total","--format=csv,noheader,nounits"], encoding="utf-8").strip()
-            parts = out.split(",")
-            return round(float(parts[1].strip()) / 1024, 1)
-        except Exception:
-            return 0.0
+        return self._query_nvidia_smi()["vram_total_gb"]
 
     def _get_running_apps(self) -> list:
         try:
@@ -237,15 +265,16 @@ class StateMonitor:
             return []
 
     def _get_clipboard(self) -> str:
-        """获取当前剪贴板内容"""
         try:
             import pyperclip
+
             return pyperclip.paste()
         except Exception:
             return ""
 
 
 _monitor = None
+
 
 def get_monitor():
     global _monitor

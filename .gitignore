@@ -53,3 +53,9 @@ configs/config.json
 
 # Keep essential files
 !configs/.gitkeep
+
+# Temp / leftover files
+server_old.py
+server_old*.py
+_test*.py
+*.bad

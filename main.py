@@ -107,7 +107,8 @@ def create_tray_icon():
 
 
 def on_open_browser(icon, item):
-    webbrowser.open("https://127.0.0.1:8765/?qr=1")
+    protocol = "https" if server._use_https else "http"
+    webbrowser.open(f"{protocol}://127.0.0.1:8765/?qr=1")
 
 
 def on_exit(icon, item):
@@ -131,16 +132,9 @@ _UVICORN_LOG_CFG = {
 }
 
 def run_server_thread(port):
-    if not sys.stderr:
-        sys.stderr = open(os.devnull, "w", encoding="utf-8")
-    if not sys.stdout:
-        sys.stdout = open(os.devnull, "w", encoding="utf-8")
-
-    # Try HTTPS first
+    server._use_https = False
+    _log.info(f"[HTTP] Starting on port {port}")
     try:
-        cert_file, key_file = server._ensure_self_signed_cert()
-        server._use_https = True
-        _log.info(f"[HTTPS] Starting with SSL on port {port}")
         config = uvicorn.Config(
             server.app,
             host="0.0.0.0",
@@ -148,34 +142,14 @@ def run_server_thread(port):
             log_level="warning",
             access_log=False,
             log_config=_UVICORN_LOG_CFG,
-            ssl_certfile=cert_file,
-            ssl_keyfile=key_file,
         )
         srv = uvicorn.Server(config)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(srv.serve())
-        _log.info("[HTTPS] Server exited")
+        _log.info("[HTTP] Server exited")
     except BaseException as e:
-        _log_exception(f"[HTTPS] Failed ({type(e).__name__}), falling back to HTTP", e)
-        server._use_https = False
-        try:
-            _log.info(f"[HTTP] Starting without SSL on port {port}")
-            config = uvicorn.Config(
-                server.app,
-                host="0.0.0.0",
-                port=port,
-                log_level="warning",
-                access_log=False,
-                log_config=_UVICORN_LOG_CFG,
-            )
-            srv = uvicorn.Server(config)
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(srv.serve())
-            _log.info("[HTTP] Server exited")
-        except BaseException as e2:
-            _log_exception(f"[HTTP] Also failed ({type(e2).__name__})", e2)
+        _log_exception(f"[HTTP] Failed ({type(e).__name__})", e)
 
 
 def check_port_available(port):
@@ -206,7 +180,7 @@ def main():
     server.pair_code = pair_code
 
     _log.info(f"Pair Code: {pair_code}")
-    _log.info(f"URL: https://{local_ip}:{port}")
+    _log.info(f"URL: http://{local_ip}:{port}")
 
     server_thread = threading.Thread(target=run_server_thread, args=(port,), daemon=True)
     server_thread.start()

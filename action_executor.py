@@ -10,6 +10,7 @@ from typing import Callable, Any
 
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0.05
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 class ActionExecutor:
@@ -203,7 +204,7 @@ class ActionExecutor:
 
     def _exec_script(self, value: str):
         print(f"[ACTION] Script: {value[:50]}")
-        subprocess.Popen(value, shell=True)
+        subprocess.Popen(value, shell=True, creationflags=_CREATE_NO_WINDOW)
 
     def _exec_wait_for_window(self, title_part: str, timeout, settle=0.5, exact=False):
         title_part = str(title_part or "").strip()

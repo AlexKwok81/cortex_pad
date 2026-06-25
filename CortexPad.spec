@@ -40,14 +40,6 @@ hiddenimports = [
     'comtypes',
     'comtypes.client',
     'screen_brightness_control',
-    'cryptography',
-    'cryptography.hazmat.primitives',
-    'cryptography.hazmat.primitives.asymmetric',
-    'cryptography.hazmat.primitives.asymmetric.rsa',
-    'cryptography.hazmat.primitives.hashes',
-    'cryptography.hazmat.primitives.serialization',
-    'cryptography.x509',
-    'cryptography.x509.oid',
     'faster_whisper',
     'ctranslate2',
     'keyboard',
@@ -114,6 +106,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    uac_admin=True,
+    uac_admin=False,
     icon='icon.png',
 )
+

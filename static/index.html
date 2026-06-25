@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -266,6 +266,7 @@
         let state = {};
         let editMode = false;
         let retry = 0;
+        const MAX_RETRY = 10;
 
 const I={
 "volume-off":"\u{1f507}","volume-up":"\u{1f50a}","volume-down":"\u{1f509}",
@@ -379,6 +380,7 @@ const I={
         /* ===== WS ===== */
         let wsErrorShown = false;
         function connect(){
+            if(retry>=MAX_RETRY){ss('off');toast('连接失败，请检查服务是否运行','red',10000);return}
             const p=location.protocol==='https:'?'wss:':'ws:';
             ws=new WebSocket(`${p}//${location.host}/ws`);
             ss('wait');
@@ -387,14 +389,10 @@ const I={
             ws.onerror=(e)=>{
                 if(!wsErrorShown){
                     wsErrorShown=true;
-                    if(location.protocol==='https:'){
-                        toast('⚠️ 请先信任浏览器证书警告！点击地址栏的"不安全"→继续访问','yellow',8000);
-                    }else{
-                        toast('WebSocket 连接失败','red');
-                    }
+                    toast('WebSocket 连接失败，请检查服务是否运行','red');
                 }
             };
-            ws.onclose=()=>{ss('off');retry++;toast('连接中断，正在重连...','red');setTimeout(connect,Math.min(1500*Math.pow(1.5,retry),10000))};
+            ws.onclose=()=>{ss('off');retry++;if(retry<MAX_RETRY){toast('连接中断，正在重连('+retry+'/'+MAX_RETRY+')...','red');setTimeout(connect,3000)}else{toast('连接失败，请检查服务是否运行','red',10000)}};
         }
         function handle(m){
             switch(m.type){
@@ -1114,3 +1112,4 @@ const I={
 
 </body>
 </html>
+
