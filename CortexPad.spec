@@ -26,6 +26,7 @@ hiddenimports = [
     'websockets.legacy.client',
     'websockets.legacy.server',
     'pyautogui',
+    'pyautogui._pyautogui_win',
     'pyperclip',
     'pygetwindow',
     'pystray',
@@ -43,6 +44,14 @@ hiddenimports = [
     'faster_whisper',
     'ctranslate2',
     'keyboard',
+    'keyboard._winkeyboard',
+    'pyaudio',
+    'audio_sink',
+    'numpy',
+    'numpy.core',
+    'numpy.core._methods',
+    'numpy.lib',
+    'numpy.lib.format',
 ]
 
 datas = [
@@ -54,7 +63,6 @@ binaries = []
 
 excludes = [
     'matplotlib',
-    'numpy',
     'scipy',
     'pandas',
     'pytest',
@@ -106,7 +114,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    uac_admin=False,
+    uac_admin=True,
     icon='icon.png',
 )
 

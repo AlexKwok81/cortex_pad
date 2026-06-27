@@ -132,8 +132,53 @@ _UVICORN_LOG_CFG = {
 }
 
 def run_server_thread(port):
-    server._use_https = False
-    _log.info(f"[HTTP] Starting on port {port}")
+    """Start the server with HTTPS if possible, falling back to HTTP."""
+    certfile = os.path.join(_base_dir(), "cert.pem")
+    keyfile = os.path.join(_base_dir(), "key.pem")
+
+    use_https = True
+    if not os.path.exists(certfile) or not os.path.exists(keyfile):
+        _log.info("[HTTPS] Generating self-signed certificate...")
+        try:
+            from cryptography import x509
+            from cryptography.x509.oid import NameOID
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa
+            import datetime
+            import ipaddress
+
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            ip = get_local_ip()
+            subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, ip)])
+            cert = (
+                x509.CertificateBuilder()
+                .subject_name(subject)
+                .issuer_name(issuer)
+                .public_key(key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(datetime.datetime.utcnow())
+                .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
+                .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address(ip))]), critical=False)
+                .sign(key, hashes.SHA256())
+            )
+            with open(keyfile, "wb") as f:
+                f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL, serialization.NoEncryption()))
+            with open(certfile, "wb") as f:
+                f.write(cert.public_bytes(serialization.Encoding.PEM))
+            _log.info(f"[HTTPS] Certificate generated for {ip}")
+        except Exception as e:
+            _log_exception("[HTTPS] Failed to generate cert, falling back to HTTP", e)
+            use_https = False
+
+    if use_https and os.path.exists(certfile) and os.path.exists(keyfile):
+        ssl_kwargs = {"ssl_keyfile": keyfile, "ssl_certfile": certfile}
+        server._use_https = True
+        _log.info(f"[HTTPS] Starting on port {port}")
+    else:
+        ssl_kwargs = {}
+        server._use_https = False
+        _log.info(f"[HTTP] Starting on port {port}")
+
     try:
         config = uvicorn.Config(
             server.app,
@@ -142,14 +187,15 @@ def run_server_thread(port):
             log_level="warning",
             access_log=False,
             log_config=_UVICORN_LOG_CFG,
+            **ssl_kwargs,
         )
         srv = uvicorn.Server(config)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(srv.serve())
-        _log.info("[HTTP] Server exited")
+        _log.info("Server exited")
     except BaseException as e:
-        _log_exception(f"[HTTP] Failed ({type(e).__name__})", e)
+        _log_exception(f"Server failed ({type(e).__name__})", e)
 
 
 def check_port_available(port):

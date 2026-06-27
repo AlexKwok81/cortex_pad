@@ -14,6 +14,9 @@ from typing import Set, Dict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
+import time
+import keyboard as _kb
+from audio_sink import get_audio_sink
 
 if sys.platform == "win32":
     try:
@@ -220,11 +223,51 @@ async def websocket_endpoint(websocket: WebSocket):
 
         while True:
             raw = await websocket.receive()
+
+            # Binary frames -> write to virtual audio cable (real-time voice stream)
+            if raw.get("bytes"):
+                audio_sink = get_audio_sink()
+                if audio_sink.available:
+                    try:
+                        audio_sink.write(raw["bytes"])
+                    except Exception:
+                        pass
+                continue
+
             if raw.get("text"):
                 data = json.loads(raw["text"])
+                msg_type = data.get("type", "")
+
+                # Voice input: hold Ctrl+Win + open audio sink
+                if msg_type == "voice_start":
+                    try:
+                        audio_sink = get_audio_sink()
+                        if audio_sink.available:
+                            audio_sink.start()
+                        _kb.press('ctrl')
+                        time.sleep(0.02)
+                        _kb.press('win')
+                        print("[VOICE] Started", flush=True)
+                    except Exception as e:
+                        print(f"[VOICE] start failed: {e}", flush=True)
+                        await websocket.send_json({"type": "error", "message": f"voice_start failed: {e}"})
+                    continue
+
+                # Voice input: release keys + close audio sink
+                if msg_type == "voice_stop":
+                    try:
+                        _kb.release('win')
+                        time.sleep(0.02)
+                        _kb.release('ctrl')
+                        audio_sink = get_audio_sink()
+                        if audio_sink.available:
+                            audio_sink.stop()
+                        print("[VOICE] Stopped", flush=True)
+                    except Exception as e:
+                        print(f"[VOICE] stop failed: {e}", flush=True)
+                    continue
+
                 await handle_client_message(websocket, data)
-            elif raw.get("bytes"):
-                await _handle_voice_recognition(websocket, raw["bytes"])
 
     except WebSocketDisconnect:
         connected_clients.discard(websocket)
@@ -423,13 +466,55 @@ async def startup_event():
     print(f"[SERVER] Pair code: {pair_code}", flush=True)
 
     asyncio.create_task(state_monitor_loop())
-    asyncio.create_task(pair_code_rotation_loop())
 
 def run_server():
     global _use_https
-    _use_https = False
-    print("[HTTP] Starting on port 8765", flush=True)
-    uvicorn.run(app, host="0.0.0.0", port=8765, log_level="info")
+    _use_https = True
+    port = 8765
+
+    certfile = os.path.join(_base_dir(), "cert.pem")
+    keyfile = os.path.join(_base_dir(), "key.pem")
+
+    if not os.path.exists(certfile) or not os.path.exists(keyfile):
+        print("[HTTPS] Generating self-signed certificate...", flush=True)
+        try:
+            from cryptography import x509
+            from cryptography.x509.oid import NameOID
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa
+            import datetime
+            import ipaddress
+
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            ip = get_local_ip()
+            subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, ip)])
+            cert = (
+                x509.CertificateBuilder()
+                .subject_name(subject)
+                .issuer_name(issuer)
+                .public_key(key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(datetime.datetime.utcnow())
+                .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
+                .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address(ip))]), critical=False)
+                .sign(key, hashes.SHA256())
+            )
+            with open(keyfile, "wb") as f:
+                f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL, serialization.NoEncryption()))
+            with open(certfile, "wb") as f:
+                f.write(cert.public_bytes(serialization.Encoding.PEM))
+            print(f"[HTTPS] Certificate generated for {ip}", flush=True)
+        except Exception as e:
+            print(f"[HTTPS] Failed to generate cert: {e}, falling back to HTTP", flush=True)
+            _use_https = False
+
+    if _use_https and os.path.exists(certfile) and os.path.exists(keyfile):
+        print(f"[HTTPS] Starting on port {port}", flush=True)
+        uvicorn.run(app, host="0.0.0.0", port=port, log_level="info", ssl_keyfile=keyfile, ssl_certfile=certfile)
+    else:
+        _use_https = False
+        print(f"[HTTP] Starting on port {port}", flush=True)
+        uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
 
 if __name__ == "__main__":
     run_server()

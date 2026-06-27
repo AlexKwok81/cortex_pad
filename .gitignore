@@ -59,3 +59,14 @@ server_old.py
 server_old*.py
 _test*.py
 *.bad
+
+# VB-Cable installer (downloaded at runtime)
+VBCable/
+VBCable.zip
+
+# Auto-generated TLS certs
+cert.pem
+key.pem
+
+# Server log (redirected output)
+server.log

@@ -187,6 +187,7 @@
                     <div class="tp" data-type="stat_vram">VRAM</div>
                     <div class="tp" data-type="voice">🎤 Voice</div>
                     <div class="tp" data-type="voice_workflow">🎤 Workflow</div>
+                    <div class="tp" data-type="voice_input">🎤 语音输入</div>
                 </div>
             </div>
             <div class="fd item-fields"><label>Name</label><input id="f-name"></div>
@@ -210,7 +211,7 @@
                     <div class="sp2" data-w="4" data-h="1">4&times;1</div>
                 </div>
             </div>
-            <div class="fd btn-fields"><label>Mode</label><select id="f-mode"><option value="normal">Tap</option><option value="toggle">Toggle</option><option value="long_press">Long Press</option></select></div>
+            <div class="fd btn-fields"><label>Mode</label><select id="f-mode"><option value="normal">Tap</option><option value="toggle">Toggle</option><option value="long_press">Long Press</option><option value="voice_input">Voice Input</option></select></div>
             <div class="fd action-fields"><label>Actions (JSON)</label>
                 <div style="display:flex;gap:6px;align-items:flex-start">
                     <textarea id="f-actions" style="flex:1"></textarea>
@@ -461,7 +462,7 @@ const I={
                 el.style.cssText=`left:${gx*(S+GAP)}px;top:${gy*(S+GAP)}px;width:${w}px;height:${h}px`;
                 el.dataset.id=it.id;
 
-                if(it.type==='button')renderBtnItem(el,it);
+                if(it.type==='button'||it.type==='voice_input')renderBtnItem(el,it);
                 else if(it.type==='voice')renderVoiceItem(el,it);
                 else if(it.type==='voice_workflow')renderVoiceWorkflowItem(el,it);
                 else if(it.type.startsWith('stat_'))renderStatItem(el,it);
@@ -509,7 +510,60 @@ const I={
                 if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'trigger',button_id:it.id,actions:a}));
             };
             
-            if(it.mode==='long_press'&&it.actions_long){
+            if(it.mode==='voice_input'){
+                let _vbActive=false;
+                let _vbStream=null;
+                let _vbAudioCtx=null;
+                let _vbScriptNode=null;
+                function voiceBtnStart(e){
+                    if(e)e.preventDefault();
+                    if(_vbActive||editMode)return;
+                    _vbActive=true;
+                    el.classList.add('active');
+                    vibrate(30);
+                    sendLiveVoice({type:'voice_start'});
+                    setTimeout(function(){
+                        if(!_vbActive)return;
+                        navigator.mediaDevices.getUserMedia({audio:{sampleRate:44100,channelCount:1,echoCancellation:true,noiseSuppression:false,autoGainControl:false}}).then(function(stream){
+                            if(!_vbActive){stream.getTracks().forEach(function(t){t.stop()});return}
+                            _vbStream=stream;
+                            _vbAudioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:44100});
+                            var src=_vbAudioCtx.createMediaStreamSource(stream);
+                            var script=_vbAudioCtx.createScriptProcessor(4096,1,1);
+                            _vbScriptNode=script;
+                            script.onaudioprocess=function(ev){
+                                if(!_vbActive)return;
+                                var ch=ev.inputBuffer.getChannelData(0);
+                                var pcm=new Float32Array(ch);
+                                if(ws&&ws.readyState===WebSocket.OPEN){try{ws.send(pcm.buffer)}catch(err){}}
+                            };
+                            src.connect(script);
+                            script.connect(_vbAudioCtx.destination);
+                        }).catch(function(err){
+                            console.error('[VOICE INPUT] getUserMedia error:',err);
+                            toast('麦克风授权失败: '+(err.message||err),'red');
+                            voiceBtnEnd();
+                        });
+                    },300);
+                }
+                function voiceBtnEnd(){
+                    if(!_vbActive)return;
+                    _vbActive=false;
+                    el.classList.remove('active');
+                    try{if(_vbScriptNode&&_vbAudioCtx)_vbScriptNode.disconnect()}catch(e){}
+                    try{if(_vbAudioCtx&&_vbAudioCtx.state!=='closed')_vbAudioCtx.close()}catch(e){}
+                    if(_vbStream){_vbStream.getTracks().forEach(function(t){t.stop()});_vbStream=null}
+                    _vbAudioCtx=null;_vbScriptNode=null;
+                    sendLiveVoice({type:'voice_stop'});
+                    vibrate(15);
+                }
+                el.addEventListener('touchstart',voiceBtnStart,{passive:false});
+                el.addEventListener('touchend',function(e){e.preventDefault();voiceBtnEnd()});
+                el.addEventListener('touchcancel',voiceBtnEnd);
+                el.addEventListener('mousedown',voiceBtnStart);
+                el.addEventListener('mouseup',function(e){e.preventDefault();voiceBtnEnd()});
+                el.addEventListener('mouseleave',voiceBtnEnd);
+            }else if(it.mode==='long_press'&&it.actions_long){
                 let timer=null;let fired=false;
                 const start=()=>{fired=false;timer=setTimeout(()=>{fired=true;triggerAction(it.actions_long);},500);};
                 const end=()=>{clearTimeout(timer);if(!fired){if(editMode)return;triggerAction(it.actions||[]);}};
@@ -733,6 +787,9 @@ const I={
         // Type picker
         document.querySelectorAll('.tp').forEach(o=>o.addEventListener('click',()=>{
             document.querySelectorAll('.tp').forEach(x=>x.classList.remove('sel'));o.classList.add('sel');
+            if(o.dataset.type==='voice_input'){
+                document.getElementById('f-mode').value='voice_input';
+            }
             updateFieldVisibility();
         }));
         document.querySelectorAll('.sp2').forEach(o=>o.addEventListener('click',()=>{
@@ -742,11 +799,12 @@ const I={
         function updateFieldVisibility(){
             const tp=document.querySelector('.tp.sel')?.dataset.type||'button';
             const isBtn=tp==='button';
+            const isVoiceInput=tp==='voice_input';
             const isWorkflow=tp==='voice_workflow';
             document.querySelectorAll('.item-fields').forEach(f=>f.style.display=(isBtn||isWorkflow)?'':'none');
             document.querySelectorAll('.btn-fields').forEach(f=>f.style.display=isBtn?'':'none');
             document.querySelectorAll('.workflow-fields').forEach(f=>f.style.display=isWorkflow?'':'none');
-            document.querySelectorAll('.action-fields').forEach(f=>f.style.display=(isBtn||isWorkflow)?'':'none');
+            document.querySelectorAll('.action-fields').forEach(f=>f.style.display=(isBtn||isWorkflow||isVoiceInput)?'':'none');
             const hotkeyBtn=document.getElementById('hotkey-record-btn');
             if(hotkeyBtn)hotkeyBtn.style.display=isBtn?'':'none';
             const mode=document.getElementById('f-mode').value;
@@ -832,6 +890,9 @@ const I={
                 itemData.actions=ac;
             }else if(tp==='voice'){
                 itemData.actions=[];
+            }else if(tp==='voice_input'){
+                itemData.actions=ac;
+                itemData.mode='voice_input';
             }
             if(editId){
                 const i=cfg.layout.findIndex(x=>x.id===editId);
@@ -976,6 +1037,10 @@ const I={
         var _voiceChunks = [];
         var _voiceContext = null;
 
+        function sendLiveVoice(obj) {
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+        }
+
         function voiceStart(context) {
             if (_voiceRecording) return;
 
@@ -1112,4 +1177,3 @@ const I={
 
 </body>
 </html>
-
