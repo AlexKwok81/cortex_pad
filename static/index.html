@@ -801,7 +801,7 @@ const I={
             const isBtn=tp==='button';
             const isVoiceInput=tp==='voice_input';
             const isWorkflow=tp==='voice_workflow';
-            document.querySelectorAll('.item-fields').forEach(f=>f.style.display=(isBtn||isWorkflow)?'':'none');
+            document.querySelectorAll('.item-fields').forEach(f=>f.style.display=(isBtn||isWorkflow||isVoiceInput)?'':'none');
             document.querySelectorAll('.btn-fields').forEach(f=>f.style.display=isBtn?'':'none');
             document.querySelectorAll('.workflow-fields').forEach(f=>f.style.display=isWorkflow?'':'none');
             document.querySelectorAll('.action-fields').forEach(f=>f.style.display=(isBtn||isWorkflow||isVoiceInput)?'':'none');

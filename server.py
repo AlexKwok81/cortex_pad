@@ -77,7 +77,12 @@ def _resource_path(relative_path):
         base_path = sys._MEIPASS
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_path, relative_path)
+    primary = os.path.join(base_path, relative_path)
+    # Fallback: check override directory for hot-reload of static assets
+    override = os.path.join(base_path, '_override', relative_path)
+    if os.path.exists(override):
+        return override
+    return primary
 
 
 @app.get("/")
@@ -297,26 +302,46 @@ async def _handle_voice_recognition(websocket: WebSocket, audio_bytes: bytes):
 async def _handle_voice_workflow(websocket: WebSocket, data: dict):
     workflow_id = data.get("workflow_id", "")
     text = data.get("text", "")
+    
+    # If no text provided, try to recognize from audio_data
+    if not text and data.get("audio_data"):
+        try:
+            audio_bytes = base64.b64decode(data["audio_data"])
+            loop = asyncio.get_event_loop()
+            text = await loop.run_in_executor(None, recognize_voice, audio_bytes)
+            print(f"[VOICE] Workflow recognized: {workflow_id}, text: {text}", flush=True)
+        except Exception as e:
+            print(f"[VOICE] Workflow voice recognition error: {e}", flush=True)
+            await websocket.send_json({"type": "workflow_error", "workflow_id": workflow_id, "msg": f"Voice recognition failed: {e}"})
+            return
+    
     print(f"[VOICE] Workflow request: {workflow_id}, text: {text}", flush=True)
 
     manager = get_config_manager()
     cfg = manager.get_config()
     layout = cfg.get("layout", [])
-    button_map = {item.get("id", ""): item for item in layout if item.get("type") == "button"}
 
     matched_button = None
-    text_lower = text.lower()
-    for btn in layout:
-        if btn.get("type") != "button":
-            continue
-        btn_name = btn.get("name", "").lower()
-        if btn_name and btn_name in text_lower:
-            matched_button = btn
-            break
-        btn_id = btn.get("id", "").lower()
-        if btn_id and btn_id in text_lower:
-            matched_button = btn
-            break
+    # First try to match by workflow_id (for voice_workflow type)
+    if workflow_id:
+        for btn in layout:
+            if btn.get("workflow_id") == workflow_id:
+                matched_button = btn
+                break
+    # Fallback: match by button name/id in recognized text
+    if not matched_button and text:
+        text_lower = text.lower()
+        for btn in layout:
+            if btn.get("type") not in ("button", "voice_workflow"):
+                continue
+            btn_name = btn.get("name", "").lower()
+            if btn_name and btn_name in text_lower:
+                matched_button = btn
+                break
+            btn_id = btn.get("id", "").lower()
+            if btn_id and btn_id in text_lower:
+                matched_button = btn
+                break
 
     if matched_button:
         actions = matched_button.get("actions", [])
@@ -326,7 +351,8 @@ async def _handle_voice_workflow(websocket: WebSocket, data: dict):
             try:
                 executor = get_executor()
                 loop = asyncio.get_event_loop()
-                success = await loop.run_in_executor(None, executor.execute_actions, actions)
+                variables = {"voice_text": text or ""}
+                success = await loop.run_in_executor(None, executor.execute_actions, actions, variables)
                 if success:
                     monitor = get_monitor()
                     state = await loop.run_in_executor(None, monitor.get_full_state)

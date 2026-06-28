@@ -70,3 +70,19 @@ key.pem
 
 # Server log (redirected output)
 server.log
+# Debug / temp files
+index_git.html
+index_new.html
+_check.py
+debug_pair.cjs
+debug_pair.mjs
+debug_state.png
+patch_server.mjs
+run_server.vbs
+stderr.txt
+voice_fix.patch
+configs/config.json.bad
+configs/config-v1.0.json
+.pw/
+
+_override/
